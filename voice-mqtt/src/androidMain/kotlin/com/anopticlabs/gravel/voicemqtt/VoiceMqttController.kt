@@ -4,6 +4,8 @@ import android.content.Context
 import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.notebook.pipeline.NoteReplySink
 import com.anopticlabs.gravel.notebook.pipeline.noteReplySinkOrNull
+import com.anopticlabs.gravel.voicemqtt.capture.VoiceCaptureStore
+import com.anopticlabs.gravel.voicemqtt.capture.VoiceCapturedMessage
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionPhase
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionState
 import com.anopticlabs.gravel.voicemqtt.client.PahoVoiceTransport
@@ -47,6 +49,11 @@ class VoiceMqttController(
     /** The record the settings screen reads for "reply filed", or the reason it was not. */
     val replyFiles: VoiceReplyFileHistory = VoiceReplyFileHistory(now = now),
     /**
+     * The inventory every message on the reply filter lands in — matched, unsolicited, unreadable and duplicate
+     * alike. In memory, bounded, newest first; see [VoiceCaptureStore].
+     */
+    private val captureStore: VoiceCaptureStore = VoiceCaptureStore(),
+    /**
      * The notebook's reply sink, looked up when an answer arrives: the app binds it only with
      * `VOICE_MQTT_ENABLED` on, and with the flag off nothing is filed because there is nothing to file into.
      */
@@ -54,6 +61,9 @@ class VoiceMqttController(
 ) {
     val settings: StateFlow<VoiceSettings> = store.settings
     val connection: StateFlow<ConnectionState> = transport.state
+
+    /** Every message seen on the reply filter, newest first — what the Voice Assistant page lists. */
+    val captures: StateFlow<List<VoiceCapturedMessage>> = captureStore.messages
 
     /**
      * `requestId` → the note the capture settled as, and any answer already waiting for one. In memory only, and
@@ -77,6 +87,7 @@ class VoiceMqttController(
         replies = VoiceReplyHandler(now),
         scope = scope,
         now = now,
+        captures = captureStore,
         copy = copy,
         onAnswer = filer::answer,
     )
@@ -84,10 +95,10 @@ class VoiceMqttController(
     private val reconnect = Mutex()
 
     init {
-        transport.setIncoming { payload ->
+        transport.setIncoming { topic, payload ->
             // A reply is only ever spoken, never echoed back as the transcript: the client answers with the
-            // server's text and nothing else.
-            scope.launch { client.onReplyMessage(payload) }
+            // server's text and nothing else. The topic rides along so the capture list can name it.
+            scope.launch { client.onReplyMessage(topic, payload) }
         }
     }
 
@@ -182,6 +193,8 @@ class VoiceMqttEngine(
     val speechRuns: StateFlow<List<VoiceSpeechRun>>,
     /** The loop's record of filing answers into notes: filed, or why not, newest first. */
     val replyFiles: StateFlow<List<VoiceReplyFileRun>>,
+    /** Everything that arrived on the reply filter, newest first, spoken or not. */
+    val captures: StateFlow<List<VoiceCapturedMessage>>,
 )
 
 fun buildVoiceMqttEngine(
@@ -217,5 +230,6 @@ fun buildVoiceMqttEngine(
         speech = speaker,
         speechRuns = speaker.runs,
         replyFiles = controller.replyFiles.runs,
+        captures = controller.captures,
     )
 }

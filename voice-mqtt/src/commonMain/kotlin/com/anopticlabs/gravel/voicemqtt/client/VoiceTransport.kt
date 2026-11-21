@@ -17,8 +17,13 @@ data class ConnectionState(
  * is what makes a retry with the same requestId the client's decision.
  */
 interface VoiceTransport {
-    /** Called for every message on the subscribed reply filter; the listener decides whether it is ours. */
-    fun setIncoming(listener: (payload: ByteArray) -> Unit)
+    /**
+     * Called for every message on the subscribed reply filter, with the topic it arrived on; the listener decides
+     * whether it is ours. The topic matters because the filter can be a wildcard and a message that answers
+     * nothing this phone asked is still recorded — and, if it carries words, spoken — so the record has to be
+     * able to say where it came from.
+     */
+    fun setIncoming(listener: (topic: String, payload: ByteArray) -> Unit)
 
     suspend fun connect(settings: VoiceSettings): ConnectionState
 

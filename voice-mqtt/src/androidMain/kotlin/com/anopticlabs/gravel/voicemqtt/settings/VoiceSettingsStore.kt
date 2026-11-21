@@ -16,8 +16,9 @@ import java.util.UUID
  * this store logs no values at all, so an app log or a crash report cannot carry the password, and neither can
  * the settings file itself.
  *
- * [VoiceSettings.speakReplies] and [VoiceSettings.headsetOnly] are independent switches with an OFF position
- * each, stored like any other value and read back as the user left them: nothing here forces a value.
+ * [VoiceSettings.speakReplies], [VoiceSettings.speakUnsolicited] and [VoiceSettings.headsetOnly] are independent
+ * switches with an OFF position each, stored like any other value and read back as the user left them: nothing
+ * here forces a value.
  * [VoiceSettings.disableAppReminders] is stored the same way and is off until the user turns it on, so a phone
  * that has never touched it keeps the behaviour it had before the switch existed.
  *
@@ -81,6 +82,7 @@ class VoiceSettingsStore(
             ingressTopic = connection.requestTopic,
             egressTopic = connection.responseTopic,
             speakReplies = speaking.speakReplies,
+            speakUnsolicited = speaking.speakUnsolicited,
             headsetOnly = speaking.headsetOnly,
             preferredDevice = speaking.preferredDevice,
             ttsEngine = speaking.ttsEngine,
@@ -105,6 +107,7 @@ class VoiceSettingsStore(
             .putString(KEY_INGRESS, next.ingressTopic)
             .putString(KEY_EGRESS, next.egressTopic)
             .putBoolean(VoiceSpeakingSettings.KEY_SPEAK_REPLIES, next.speakReplies)
+            .putBoolean(VoiceSpeakingSettings.KEY_SPEAK_UNSOLICITED, next.speakUnsolicited)
             .putBoolean(VoiceSpeakingSettings.KEY_HEADSET_ONLY, next.headsetOnly)
         val preferred = next.preferredDevice
         if (preferred == null) {

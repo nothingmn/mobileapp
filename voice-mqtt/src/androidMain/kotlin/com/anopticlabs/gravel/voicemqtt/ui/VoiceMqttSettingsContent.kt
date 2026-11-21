@@ -31,6 +31,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.anopticlabs.gravel.notebook.pipeline.NoteReplyResult
 import com.anopticlabs.gravel.voicemqtt.R
+import com.anopticlabs.gravel.voicemqtt.capture.VoiceCapturedMessage
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionPhase
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionState
 import com.anopticlabs.gravel.voicemqtt.copy.AndroidVoiceText
@@ -46,6 +47,10 @@ import com.anopticlabs.gravel.voicemqtt.speech.PlaybackPolicy
 import com.anopticlabs.gravel.voicemqtt.speech.VoiceReplyFileRun
 import com.anopticlabs.gravel.voicemqtt.speech.VoiceReplyFilingOutcome
 import com.anopticlabs.gravel.voicemqtt.speech.VoiceSpeechRun
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 /**
  * Settings > Voice Assistant: everything the client needs at connect time, all of it editable.
@@ -73,6 +78,8 @@ fun VoiceMqttSettingsContent(
     onSaveCaptureBehaviour: (VoiceSettings) -> Unit = onSave,
     speechRuns: List<VoiceSpeechRun> = emptyList(),
     replyFiles: List<VoiceReplyFileRun> = emptyList(),
+    /** Everything that arrived on the reply filter, newest first. Recorded whatever the switches say. */
+    captures: List<VoiceCapturedMessage> = emptyList(),
 ) {
     val context = LocalContext.current
     val text: VoiceText = remember(context) { AndroidVoiceText(context) }
@@ -241,6 +248,14 @@ fun VoiceMqttSettingsContent(
             checked = draft.speakReplies,
             onCheckedChange = { draft = draft.copy(speakReplies = it) },
         )
+        // The operator asked for this one open: anything on the reply filter is read aloud, and the subtitle
+        // says plainly what that costs. The capture list below works whichever way it is set.
+        ToggleRow(
+            title = stringResource(R.string.voice_toggle_speak_unsolicited_title),
+            description = stringResource(R.string.voice_toggle_speak_unsolicited_description),
+            checked = draft.speakUnsolicited,
+            onCheckedChange = { draft = draft.copy(speakUnsolicited = it) },
+        )
         ToggleRow(
             title = stringResource(R.string.voice_toggle_headset_only_title),
             description = stringResource(R.string.voice_toggle_headset_only_description),
@@ -309,6 +324,29 @@ fun VoiceMqttSettingsContent(
             onCheckedChange = { onSaveCaptureBehaviour(draft.copy(disableAppReminders = it)) },
         )
 
+        // The inventory: every message the filter delivered, whether it was spoken, filed, or neither. It is the
+        // answer to "what is actually reaching this phone", which no other screen can give.
+        Text(stringResource(R.string.voice_section_captured), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.voice_capture_bound), style = MaterialTheme.typography.bodySmall)
+        if (captures.isEmpty()) {
+            Text(stringResource(R.string.voice_capture_empty), style = MaterialTheme.typography.bodySmall)
+        } else {
+            captures.forEach { message ->
+                Text(
+                    stringResource(
+                        R.string.voice_capture_entry,
+                        capturedAt(message.atMillis),
+                        message.topic.ifBlank { stringResource(R.string.voice_capture_no_topic) },
+                        stringResource(
+                            if (message.matched) R.string.voice_capture_matched else R.string.voice_capture_unmatched,
+                        ),
+                        message.preview,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+
         Button(
             onClick = { onSave(draft) },
             enabled = errors.isEmpty(),
@@ -328,6 +366,15 @@ fun VoiceMqttSettingsContent(
         lastAction?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     }
 }
+
+/**
+ * When a message arrived, in the phone's own short time format — the same formatting the reply's quote stamp
+ * uses, so the list and the note read the same way.
+ */
+private fun capturedAt(atMillis: Long): String =
+    DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+        .withZone(ZoneId.systemDefault())
+        .format(Instant.ofEpochMilli(atMillis))
 
 /** What became of the last answer: filed into the note its recording produced, or the reason it was not. */
 private fun filingSentence(run: VoiceReplyFileRun, text: VoiceText): String = text.of(

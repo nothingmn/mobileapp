@@ -110,6 +110,7 @@ private class AndroidVoiceMqttSettings(private val engine: VoiceMqttEngine) : Vo
             onSaveCaptureBehaviour = { controller.saveCaptureBehaviour(it) },
             speechRuns = engine.speechRuns.collectAsState().value,
             replyFiles = engine.replyFiles.collectAsState().value,
+            captures = engine.captures.collectAsState().value,
         )
     }
 }

@@ -1,6 +1,7 @@
 package com.anopticlabs.gravel.voicemqtt.client
 
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.voicemqtt.capture.VoiceCaptureStore
 import com.anopticlabs.gravel.voicemqtt.copy.VoiceCopy
 import com.anopticlabs.gravel.voicemqtt.copy.VoiceText
 import com.anopticlabs.gravel.voicemqtt.protocol.EnvelopeRefusal
@@ -29,7 +30,8 @@ import kotlinx.coroutines.sync.withLock
  * - a blank or oversized transcript never leaves the phone, and the user hears why instead of nothing;
  * - a transport retry reuses the requestId, because the server replays the cached answer for ten minutes
  *   while a fresh requestId would run the turn twice;
- * - a reply is paired on `requestId`; one that matches nothing outstanding is dropped unread;
+ * - a reply is paired on `requestId`; one that matches nothing outstanding is read anyway, spoken when it
+ *   carries words, and never filed — the capture list records all of them;
  * - a failure, a timeout or a `busy` back-off ends in a spoken sentence, never in silence, and the server's
  *   opaque error code is never spoken;
  * - the session is reused until five idle minutes pass, then renewed.
@@ -42,6 +44,11 @@ class VoiceTurnClient(
     private val replies: VoiceReplyHandler,
     private val scope: CoroutineScope,
     private val now: () -> Long,
+    /**
+     * The bounded inventory every message on the reply filter lands in, spoken or not. Handed in rather than
+     * created here so the settings screen reads the same list the loop writes.
+     */
+    private val captures: VoiceCaptureStore,
     /**
      * Resolves the loop's sentences into the user's language. Handed in rather than looked up here: this class
      * is common code proved by the host tests and must not know about Android resources, while the failure
@@ -74,8 +81,21 @@ class VoiceTurnClient(
     /** The settings screen's test: a fixed line out, whatever comes back spoken. */
     suspend fun sendTestMessage(): String? = send(copy.of(VoiceLoopSentences.TEST_MESSAGE))
 
-    suspend fun onReplyMessage(payload: ByteArray) {
-        when (val outcome = replies.accept(payload.decodeToString())) {
+    /**
+     * One message from the reply filter, as it arrived: [topic] is recorded with it, and [payload] is read for
+     * text. Everything is captured first, then acted on — so the inventory is complete even for a message that
+     * nothing is done with.
+     */
+    suspend fun onReplyMessage(topic: String, payload: ByteArray) {
+        val decision = replies.accept(payload.decodeToString(), topic)
+        // Only the unmatched half is subject to the switch: a matched answer is spoken and filed exactly as it
+        // always was, which is what keeps "speak everything" from turning the loop's own replies off.
+        val speaks = when (decision.outcome) {
+            is ReplyOutcome.Unsolicited -> settings().speakUnsolicited
+            else -> decision.capture.spoken
+        }
+        captures.record(decision.capture.copy(spoken = speaks))
+        when (val outcome = decision.outcome) {
             ReplyOutcome.Ignored -> Unit
             is ReplyOutcome.Final -> {
                 forget(outcome.requestId)
@@ -98,6 +118,15 @@ class VoiceTurnClient(
                 speaker.speak(failureFor(outcome.code))
             }
             is ReplyOutcome.Busy -> retryBusy(outcome.requestId)
+            is ReplyOutcome.Unsolicited -> {
+                // Nothing asked for this, so there is nothing to file it into: spoken, and only spoken.
+                if (speaks) {
+                    logger.i { "said an unsolicited message from ${topic.ifEmpty { "the reply filter" }}" }
+                    speaker.speak(outcome.text)
+                } else {
+                    logger.i { "an unsolicited message from ${topic.ifEmpty { "the reply filter" }} was captured, not spoken: the switch is off" }
+                }
+            }
         }
     }
 

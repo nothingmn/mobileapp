@@ -55,7 +55,7 @@ class PahoVoiceTransport(
     private var client: MqttAsyncClient? = null
 
     @Volatile
-    private var listener: ((payload: ByteArray) -> Unit)? = null
+    private var listener: ((topic: String, payload: ByteArray) -> Unit)? = null
 
     /** The filter the current session is subscribed to, re-subscribed on every reconnect. */
     @Volatile
@@ -63,7 +63,7 @@ class PahoVoiceTransport(
 
     val state: StateFlow<ConnectionState> = stateFlow.asStateFlow()
 
-    override fun setIncoming(listener: (payload: ByteArray) -> Unit) {
+    override fun setIncoming(listener: (topic: String, payload: ByteArray) -> Unit) {
         this.listener = listener
     }
 
@@ -89,7 +89,9 @@ class PahoVoiceTransport(
 
                     override fun messageArrived(topic: String?, message: MqttMessage?) {
                         val payload = message?.payload ?: return
-                        listener?.invoke(payload)
+                        // The topic goes with it: the record of what arrived has to be able to name where it came
+                        // from, and the filter is usually a wildcard.
+                        listener?.invoke(topic.orEmpty(), payload)
                     }
 
                     override fun deliveryComplete(token: IMqttDeliveryToken?) = Unit

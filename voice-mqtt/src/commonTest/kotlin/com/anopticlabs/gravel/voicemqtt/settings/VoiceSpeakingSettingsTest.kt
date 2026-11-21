@@ -35,6 +35,23 @@ class VoiceSpeakingSettingsTest {
         assertEquals(PreferredDevice("AA:BB:CC:DD:EE:01", "Jabra Elite"), speaking.preferredDevice)
     }
 
+    /**
+     * "Speak everything on the reply topic" is the one switch whose default the operator chose rather than
+     * derived: on, so a reminder from his own broker is read aloud on a phone that has never opened the page.
+     */
+    @Test
+    fun speakingWhatArrivedIsOnByDefaultAndStaysOffOnceTurnedOff() {
+        assertTrue(VoiceSpeakingSettings.read(emptyMap()).speakUnsolicited, "a fresh file reads back as ON")
+        assertTrue(
+            VoiceSpeakingSettings.read(mapOf(VoiceSpeakingSettings.KEY_SPEAK_REPLIES to true)).speakUnsolicited,
+            "a file written before the switch existed reads back as ON too",
+        )
+        assertFalse(
+            VoiceSpeakingSettings.read(mapOf(VoiceSpeakingSettings.KEY_SPEAK_UNSOLICITED to false)).speakUnsolicited,
+            "and a user who turned it off gets it off",
+        )
+    }
+
     @Test
     fun aStoredSwitchIsReadBackAsTheUserLeftIt() {
         val off = VoiceSpeakingSettings.read(

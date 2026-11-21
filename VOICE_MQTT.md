@@ -117,8 +117,9 @@ carries none of them forward.
   again, with back-off, for as long as the server's ten-minute cached-answer window is open. Minting a new
   requestId would run the turn twice, which is the one mistake the protocol calls out by name.
 - **Answers are paired on `requestId`, never on `correlationId`.** A correlation id is server-minted, one per
-  session and reused across turns, so a message that matches nothing outstanding is dropped without being read
-  for text. That also keeps another phone's traffic on the same broker out of this phone's speaker.
+  session and reused across turns, so it can never be the pairing key. A message that matches nothing
+  outstanding is not one of this phone's answers — and since the reply filter was opened up it is read anyway,
+  recorded, and spoken when it carries words (see *What arrives on the reply filter*). It is never filed.
 - **Every failure ends in a sentence.** A reply that does not arrive inside 60 seconds, an error reply, or a
   turn that cannot be published all produce a spoken line. The server's opaque error code is logged and never
   spoken. `busy` (the 256-turn in-flight cap) is not a failure to announce: the same requestId is published
@@ -126,13 +127,83 @@ carries none of them forward.
 - **No echo-back.** The loop speaks only the server's reply text. It never re-speaks the transcript it just
   published, and never speaks the transcript as a confirmation.
 
+## What arrives on the reply filter, and what happens to it
+
+The client subscribes to the reply filter and, until this increment, read a message only if its `requestId`
+matched a turn this phone had outstanding. Everything else — a reminder pushed from Agentry, a message from a
+second client on the same broker — was dropped unread and left no trace at all. The operator asked for that
+opening up: he wants to see what actually reaches the app, and he wants his own broker's reminders read aloud.
+
+Two things happen now, for **every** message on the filter:
+
+**1. It is recorded.** The Voice Assistant page lists the newest **50** messages, newest first, each with the
+time it arrived (the phone's own short time format), the topic it arrived on, whether it matched one of our
+outstanding requests, and the first **120 characters** of the payload on one line. The list is in memory only
+and is not persisted: it answers "what is reaching this phone right now", and a file of other people's messages
+is not worth leaving on disk. The bound is the whole reason that is safe.
+
+**2. It is classified, in this order.** The first line that holds decides; the list shows the verdict.
+
+| in this order | the message | spoken? | filed? |
+|---|---|---|---|
+| 1 | an empty or blank payload | no | no |
+| 2 | text is read: the envelope's `text` field, a JSON string, or the payload itself as plain text | — | — |
+| 3 | `requestId` matches a turn we are waiting on, `final` with text | **yes** (the text) | **yes** |
+| 4 | matched, `final` with no text | yes (the loop's own failure sentence) | no |
+| 5 | matched, `error` other than `busy`, or an unknown status | yes (a failure sentence, never the code) | no |
+| 6 | matched, `error: busy` | no — the same turn goes again | no |
+| 7 | not matched, `error` status | **no** — an opaque code is not a sentence | no |
+| 8 | not matched, nothing extractable | no | no |
+| 9 | not matched, same content already spoken inside the window | no | no |
+| 10 | not matched, anything else with text | **yes** | **no** |
+
+Rows 3–6 are the old behaviour, byte for byte: a matched reply is spoken and filed, Stop still works, a failure
+still ends in a sentence and never speaks the server's code. Rows 7–9 are the refusals: they are *recorded and
+listed*, and nothing is said. Row 10 is the new path — an unsolicited message is spoken and never filed, because
+there is no recording behind it to file it into.
+
+**Text extraction copes with more than the reply envelope.** A payload that is not JSON is read as plain text
+(that is how a reminder is most likely to arrive), a JSON string is read as the text it is, and an envelope's
+`text` field is read as before. **What is still refused:** a payload that is a JSON object with no `text` field
+is listed as having no text rather than guessed at — its real shape is then visible in the list, which is the
+point of the list. And an `error` status is never read aloud whatever its `text` says: a code like
+`invalid_request` is for the log.
+
+**Dedupe: the same content is said once per 60 seconds.** QoS 1 delivers a message twice after a reconnect
+(the broker replays what it could not confirm), and a reply spoken twice is worse than one spoken late. The key
+is the message's own content — the text that would be spoken, whitespace trimmed — not the topic and not the
+`requestId`, because a redelivery need not keep either. The window is `dedupeWindowMillis` (60 s) in
+`VoiceReplyHandler`, and the note is capped at 64 entries so a busy broker cannot grow it without limit. The
+window applies to **unmatched** messages only: two of this phone's own turns whose answers happen to read the
+same are two answers, and both are spoken and filed.
+
+Because a matched answer's text is remembered when it is spoken, the broker's redelivery of an answered reply —
+which no longer matches anything outstanding — lands on row 9 instead of being read aloud a second time. That is
+the same silence the old `requestId` gate produced, for the same reason, without depending on the requestId.
+
+**The switch.** *Settings > Voice Assistant > Speaking > **Speak everything on the reply topic***, gated by the
+build flag like the rest of the page, **on by default** — the position the operator asked for. Its subtitle
+states the risk in one line: *"On speaks anything that arrives on the reply filter, reminders included. The
+broker has no per-client partition, so another client's message can be read aloud."* Off, the unmatched half is
+recorded and silent, and a matched reply is spoken and filed exactly as before — the switch never touches our own
+traffic. The captured list is recorded whichever way the switch is set; the switch decides only whether the
+sound happens.
+
+**The risk, stated plainly.** A reply tree on this broker has no per-client partition: every client subscribed
+to a wildcard sees every message its filter matches. So the filter is the only boundary there is, and anything
+published under it by anyone is read aloud on this phone. That is why the switch is a switch and why its
+subtitle says so; it is also why the list's first column is the topic.
+
 ## When a reply is spoken
 
-Two independent switches, both on by default and both the user's to change, applied where the sound would come
+Three independent switches, all on by default and all the user's to change, applied where the sound would come
 out:
 
 - **Speak the replies** — whether replies are spoken at all. Off means the loop never speaks: the reply still
   arrives and is still written into the note. That silence is the user's own choice.
+- **Speak everything on the reply topic** — whether a message that answers nothing this phone asked is spoken.
+  Off, it is still recorded in the captured list below; only our own matched replies are read aloud. Its
+  subtitle states the risk the switch takes (no per-client partition on the broker).
 - **Only play through a Bluetooth headset** — whether playback is restricted to Bluetooth. On, a Bluetooth
   audio output must be connected *at the moment of speaking*, checked with
   `AudioManager.getDevices(GET_DEVICES_OUTPUTS)` filtered to `TYPE_BLUETOOTH_A2DP`, `TYPE_BLUETOOTH_SCO` and
@@ -442,6 +513,10 @@ words, so a wrong host is diagnosable from the phone, and saving reconnects on t
   is deprecated upstream and would be a new dependency for a dozen lines.)
 - **The test button** publishes a fixed sentence and speaks whatever comes back, which is the whole loop without
   needing to record anything.
+- **The captured list** at the bottom is what has actually arrived on the reply filter — the last 50 messages,
+  newest first, with their time, topic, whether they answered one of our requests, and their opening words. It is
+  recorded whether or not anything was spoken, and it is the only place a message that was neither spoken nor
+  filed is visible at all.
 
 ## Library choice, and what it costs elsewhere
 
@@ -458,7 +533,8 @@ the app graph in `composeApp` is the only place the module is touched.
 QoS and session: publishes at **QoS 1**, subscribes at **QoS 1**, on a **persistent session**
 (`cleanSession = false`, with a client id minted once and kept). The broker therefore holds this phone's
 subscription across a brief reconnect instead of losing a reply published during the gap. A QoS 1 duplicate is
-harmless: a second answer to an answered requestId is dropped unread.
+harmless twice over: a second answer to an answered requestId no longer matches anything outstanding, and its
+content is inside the 60-second dedupe window, so it is recorded as a duplicate and not said again.
 
 ## Notes for the next increment
 
@@ -492,7 +568,7 @@ kind of module, and the tests hold both to the same rules.
   screen, and the AI section's item is resolved in `rememberSettingsItemsState` because the item list is built
   inside a `remember`.
 
-**Locales shipped:** English (`values/`) and French (`values-fr/`), 89 keys in the voice module and 21 in the
+**Locales shipped:** English (`values/`) and French (`values-fr/`), 103 keys in the voice module and 21 in the
 Text to Speech screen, every one prefixed `voice_` so the feature's copy reads as one block in a review.
 French is standard French with Canadian vocabulary where the word genuinely differs — *jumelé* for a paired
 headset, *infonuagique* for a cloud service, *téléphone* throughout — and keeps the technical terms French has
@@ -530,11 +606,21 @@ that each translation keeps the same format arguments, assert that only this fea
 ./gradlew :voice-mqtt:testAndroidHostTest
 ```
 
-100 tests, no device and no broker needed: the wire contract (five root keys, three frozen literals, UUID v4,
+139 tests, no device and no broker needed: the wire contract (five root keys, three frozen literals, UUID v4,
 1024-character and 8192-byte refusals), the five-minute session reset, the same-requestId retry inside ten
-minutes, reply pairing on `requestId` (a mismatched or empty one is ignored), and the turn as a whole against a
-fake transport (a retry carries the same requestId, a timeout is spoken, a blank transcript is refused with a
-sentence, an error reply never speaks its code). The speaking matrix, the pinned device, the legacy-value
+minutes, reply pairing on `requestId`, and the turn as a whole against a fake transport (a retry carries the same
+requestId, a timeout is spoken, a blank transcript is refused with a sentence, an error reply never speaks its
+code).
+
+Thirty of them are the opened-up filter: `VoiceCaptureClassificationTest` walks the decision order above one line
+at a time (an empty payload, a payload with no text, an opaque code from nobody, plain text, an envelope's
+`text`, a JSON string, the topic and arrival time recorded, the 120-character one-line preview, the 60-second
+dedupe window on both sides of the boundary, and that a matched answer is never suppressed by it);
+`VoiceCaptureStoreTest` proves the newest-fifty bound; `VoiceTurnClientUnsolicitedTest` runs the same rules
+through the client with a fake transport and a recording speaker — matched reply spoken + filed + captured as
+matched, unmatched text spoken and not filed, unmatched error captured and silent, blank payload captured and
+silent, plain text spoken, a duplicate said once, the switch off leaving everything captured and nothing said,
+and a matched reply still spoken and filed with the switch off. The speaking matrix, the pinned device, the legacy-value
 migration and the paired-but-disconnected case are pure-Kotlin tests over the same task, and so is the voice
 rule: a network-only engine is refused, one on-phone voice among network ones is chosen, a language with no
 on-phone voice gives the named reason, a pinned network voice is refused while offline speech is on, and a

@@ -35,6 +35,8 @@
     <string name="voice_section_speaking">Lecture</string>
     <string name="voice_toggle_speak_replies_title">Lire les réponses à voix haute</string>
     <string name="voice_toggle_speak_replies_description">Désactivé, rien n\'est lu à voix haute. La réponse arrive quand même et reste jointe à la note.</string>
+    <string name="voice_toggle_speak_unsolicited_title">Lire tout ce qui arrive sur le sujet des réponses</string>
+    <string name="voice_toggle_speak_unsolicited_description">Activé, tout ce qui arrive sur le filtre des réponses est lu à voix haute, rappels compris. Le broker ne sépare pas les clients : le message d\'un autre client peut être lu.</string>
     <string name="voice_toggle_headset_only_title">Lire uniquement dans un casque Bluetooth</string>
     <string name="voice_toggle_headset_only_description">Activé, un casque doit être connecté au moment où la réponse arrive. Désactivé, la lecture passe par la sortie que le téléphone utilise, son propre haut-parleur compris.</string>
     <string name="voice_picker_device_line">Lecture des réponses sur : %1$s</string>
@@ -47,6 +49,15 @@
     <string name="voice_section_recordings">Enregistrements</string>
     <string name="voice_toggle_disable_app_reminders_title">Désactiver les rappels de l\'application</string>
     <string name="voice_toggle_disable_app_reminders_description">Activé, un enregistrement qui ressemble à un rappel est conservé comme note. Rien n\'est programmé et aucun rappel n\'est créé dans cette application.</string>
+
+    <!-- Ce qui est arrivé sur le filtre des réponses : l'inventaire, lu ou non. -->
+    <string name="voice_section_captured">Messages reçus</string>
+    <string name="voice_capture_bound">Les 50 derniers messages du filtre des réponses, du plus récent au plus ancien.</string>
+    <string name="voice_capture_empty">Rien n\'est encore arrivé sur le filtre des réponses.</string>
+    <string name="voice_capture_entry">%1$s · %2$s · %3$s · %4$s</string>
+    <string name="voice_capture_matched">Réponse à notre requête</string>
+    <string name="voice_capture_unmatched">Pas une de nos requêtes</string>
+    <string name="voice_capture_no_topic">aucun sujet enregistré</string>
 
     <!-- La notification persistante pendant la lecture, et le bouton qui arrête la lecture. -->
     <string name="voice_speaking_channel">Lecture en cours</string>

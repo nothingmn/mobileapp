@@ -1,5 +1,6 @@
 package com.anopticlabs.gravel.voicemqtt.client
 
+import com.anopticlabs.gravel.voicemqtt.capture.VoiceCaptureStore
 import com.anopticlabs.gravel.voicemqtt.protocol.VoiceEnvelope
 import com.anopticlabs.gravel.voicemqtt.protocol.VoiceEnvelopeCodec
 import com.anopticlabs.gravel.voicemqtt.session.VoiceReplyHandler
@@ -26,9 +27,9 @@ class VoiceTurnClientTest {
         /** Every publish the client asked for, refused ones included, so a retry's identity is visible. */
         val attempts = mutableListOf<Pair<String, VoiceEnvelope>>()
         val published = mutableListOf<Pair<String, VoiceEnvelope>>()
-        var listener: ((ByteArray) -> Unit)? = null
+        var listener: ((String, ByteArray) -> Unit)? = null
 
-        override fun setIncoming(listener: (payload: ByteArray) -> Unit) {
+        override fun setIncoming(listener: (topic: String, payload: ByteArray) -> Unit) {
             this.listener = listener
         }
 
@@ -83,6 +84,7 @@ class VoiceTurnClientTest {
         replies = VoiceReplyHandler(now = { clock }),
         scope = scope,
         now = { clock },
+        captures = VoiceCaptureStore(),
         // The resolver the phone has is its resources; here the key stands for the sentence, so an assertion
         // names the copy that was said instead of an English literal.
         copy = { it.key },
@@ -140,18 +142,34 @@ class VoiceTurnClientTest {
     }
 
     @Test
-    fun aMatchingReplyIsSpokenAndAMismatchedOneIsIgnored() = runTest {
+    fun aMatchingReplyIsSpoken() = runTest {
         val transport = FakeTransport()
         val speaker = RecordingSpeaker()
         val client = client(backgroundScope, transport, speaker)
         client.publishTranscript("what time is it")
         val ours = transport.published.single().second.requestId
 
-        client.onReplyMessage(reply(requestId = "00000000-0000-4000-8000-00000000dead", text = "not ours"))
-        assertTrue(speaker.spoken.isEmpty())
-
-        client.onReplyMessage(reply(requestId = ours, text = "It is 4:43pm."))
+        client.onReplyMessage(REPLY_TOPIC, reply(requestId = ours, text = "It is 4:43pm."))
         assertEquals(listOf("It is 4:43pm."), speaker.spoken)
+    }
+
+    /**
+     * A message that answers nothing this phone asked used to be dropped unread. It is now read and said: that
+     * is the whole point of opening the filter up, and our own request stays outstanding while it happens.
+     */
+    @Test
+    fun aMismatchedReplyCarryingTextIsSpokenAndLeavesOurTurnWaiting() = runTest {
+        val transport = FakeTransport()
+        val speaker = RecordingSpeaker()
+        val client = client(backgroundScope, transport, speaker)
+        client.publishTranscript("what time is it")
+        val ours = transport.published.single().second.requestId
+
+        client.onReplyMessage(REPLY_TOPIC, reply(requestId = "00000000-0000-4000-8000-00000000dead", text = "not ours"))
+        assertEquals(listOf("not ours"), speaker.spoken)
+
+        client.onReplyMessage(REPLY_TOPIC, reply(requestId = ours, text = "It is 4:43pm."))
+        assertEquals(listOf("not ours", "It is 4:43pm."), speaker.spoken, "our own turn is still answered")
     }
 
     @Test
@@ -183,6 +201,7 @@ class VoiceTurnClientTest {
         val ours = transport.published.single().second.requestId
 
         client.onReplyMessage(
+            REPLY_TOPIC,
             """{"version":1,"status":"error","sessionId":"s","requestId":"$ours","correlationId":"c","text":"invalid_request","format":"plain"}"""
                 .encodeToByteArray(),
         )
@@ -193,4 +212,9 @@ class VoiceTurnClientTest {
     private fun reply(requestId: String, text: String) =
         """{"version":1,"status":"final","sessionId":"s","requestId":"$requestId","correlationId":"c","text":"$text","format":"plain"}"""
             .encodeToByteArray()
+
+    private companion object {
+        /** The filter a real phone subscribes to: a wildcard, so the arriving topic is the server's own last level. */
+        const val REPLY_TOPIC = "example/topic/gravel-voice-0123abcd"
+    }
 }

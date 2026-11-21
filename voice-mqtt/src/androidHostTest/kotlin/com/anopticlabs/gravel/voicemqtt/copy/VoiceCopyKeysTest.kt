@@ -81,8 +81,13 @@ class VoiceCopyKeysTest {
             assertTrue(value.isNotBlank(), "$key is blank in French")
         }
         // A copy-paste that skipped the translation shows up as a French value identical to the English one.
-        // `Port` is the only word on this screen that is written the same way in both languages.
-        val identical = english.keys.filter { english.getValue(it) == french.getValue(it) }.toSet()
+        // `Port` is the only word on this screen that is written the same way in both languages. A value with no
+        // words in it at all — the list's `%1$s · %2$s · …` separator line, whose only letters are the format
+        // arguments — has nothing to translate, so it is not an offence.
+        val identical = english.keys
+            .filter { key -> english.getValue(key).replace(formatArgument, "").any { it.isLetter() } }
+            .filter { english.getValue(it) == french.getValue(it) }
+            .toSet()
         assertEquals(setOf("voice_field_port"), identical, "a French value identical to the English one was not translated")
     }
 
@@ -192,6 +197,9 @@ class VoiceCopyKeysTest {
     /** The format arguments a value takes, so a translation cannot drop or add one. */
     private fun placeholders(value: String): List<String> =
         Regex("""%(\d+)\$[sd]""").findAll(value).map { it.value }.sorted().toList()
+
+    /** One format argument in a resource value, removed when asking whether a value has any words of its own. */
+    private val formatArgument = Regex("%(\\d+)\\$[sd]")
 
     private fun filesUnder(relative: String): List<File> =
         File(moduleDir, relative).walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()

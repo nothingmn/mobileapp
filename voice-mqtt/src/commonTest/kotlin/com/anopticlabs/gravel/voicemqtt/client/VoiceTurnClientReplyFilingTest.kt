@@ -1,5 +1,6 @@
 package com.anopticlabs.gravel.voicemqtt.client
 
+import com.anopticlabs.gravel.voicemqtt.capture.VoiceCaptureStore
 import com.anopticlabs.gravel.voicemqtt.protocol.VoiceEnvelope
 import com.anopticlabs.gravel.voicemqtt.protocol.VoiceEnvelopeCodec
 import com.anopticlabs.gravel.voicemqtt.session.VoiceReplyHandler
@@ -25,7 +26,7 @@ class VoiceTurnClientReplyFilingTest {
     private class FakeTransport : VoiceTransport {
         val published = mutableListOf<Pair<String, VoiceEnvelope>>()
 
-        override fun setIncoming(listener: (payload: ByteArray) -> Unit) = Unit
+        override fun setIncoming(listener: (topic: String, payload: ByteArray) -> Unit) = Unit
 
         override suspend fun connect(settings: VoiceSettings) = ConnectionState(ConnectionPhase.CONNECTED)
 
@@ -74,6 +75,7 @@ class VoiceTurnClientReplyFilingTest {
         replies = VoiceReplyHandler(now = { clock }),
         scope = scope,
         now = { clock },
+        captures = VoiceCaptureStore(),
         copy = { it.key },
         replyTimeoutMillis = 60_000L,
         onAnswer = { requestId, text -> filed += "$requestId:$text" },
@@ -88,7 +90,7 @@ class VoiceTurnClientReplyFilingTest {
         client.publishTranscript("turn on the garage lights")
         val ours = transport.published.single().second.requestId
 
-        client.onReplyMessage(reply(requestId = ours, text = "The garage lights are on."))
+        client.onReplyMessage(REPLY_TOPIC, reply(requestId = ours, text = "The garage lights are on."))
 
         assertEquals(listOf("spoken: The garage lights are on."), speaker.events, "the answer is spoken, once")
         assertEquals(listOf("$ours:The garage lights are on."), filed, "and offered to the note afterwards")
@@ -104,6 +106,7 @@ class VoiceTurnClientReplyFilingTest {
         val ours = transport.published.single().second.requestId
 
         client.onReplyMessage(
+            REPLY_TOPIC,
             """{"version":1,"status":"error","sessionId":"s","requestId":"$ours","correlationId":"c","text":"invalid_request","format":"plain"}"""
                 .encodeToByteArray(),
         )
@@ -121,6 +124,7 @@ class VoiceTurnClientReplyFilingTest {
         val ours = transport.published.single().second.requestId
 
         client.onReplyMessage(
+            REPLY_TOPIC,
             """{"version":1,"status":"error","sessionId":"s","requestId":"$ours","correlationId":"c","text":"busy","format":"plain"}"""
                 .encodeToByteArray(),
         )
@@ -128,18 +132,22 @@ class VoiceTurnClientReplyFilingTest {
         assertTrue(filed.isEmpty(), "a busy answer is a back-off, not an answer to keep")
     }
 
+    /**
+     * A message that answers nothing this phone asked is spoken now — that is the opened-up filter — and is
+     * still never filed, because there is no recording behind it to file it into.
+     */
     @Test
-    fun aReplyForAnotherRequestIsNeverHandedToTheNote() = runTest {
+    fun aReplyForAnotherRequestIsSpokenAndNeverHandedToTheNote() = runTest {
         val transport = FakeTransport()
         val speaker = Recorder()
         val filed = mutableListOf<String>()
         val client = client(backgroundScope, transport, speaker, filed)
         client.publishTranscript("turn on the garage lights")
 
-        client.onReplyMessage(reply(requestId = "00000000-0000-4000-8000-00000000dead", text = "not ours"))
+        client.onReplyMessage(REPLY_TOPIC, reply(requestId = "00000000-0000-4000-8000-00000000dead", text = "not ours"))
 
-        assertTrue(filed.isEmpty(), "another turn's answer is dropped unread, so it is never filed here")
-        assertTrue(speaker.events.isEmpty())
+        assertEquals(listOf("spoken: not ours"), speaker.events, "it carries words, so it is said")
+        assertTrue(filed.isEmpty(), "but it answers nothing of ours, so there is no note to file it into")
     }
 
     /**
@@ -164,7 +172,7 @@ class VoiceTurnClientReplyFilingTest {
         client.publishTranscript("turn on the garage lights")
         val ours = transport.published.single().second.requestId
 
-        client.onReplyMessage(reply(requestId = ours, text = "The garage lights are on."))
+        client.onReplyMessage(REPLY_TOPIC, reply(requestId = ours, text = "The garage lights are on."))
 
         assertEquals(listOf("stopped: The garage lights are on."), stopping.events, "the reply was cut short")
         assertEquals(
@@ -176,8 +184,13 @@ class VoiceTurnClientReplyFilingTest {
         // And the loop is not left broken by it: the next turn goes out and is answered as usual.
         client.publishTranscript("turn on the kitchen lights")
         val next = transport.published.last().second.requestId
-        client.onReplyMessage(reply(requestId = next, text = "The kitchen lights are on."))
+        client.onReplyMessage(REPLY_TOPIC, reply(requestId = next, text = "The kitchen lights are on."))
         assertEquals(2, filed.size, "the turn after a stop files normally")
+    }
+
+    private companion object {
+        /** What a real filter delivers: the server's own last level under the subscribed wildcard. */
+        const val REPLY_TOPIC = "example/topic/gravel-voice-0123abcd"
     }
 
     private fun reply(requestId: String, text: String) =

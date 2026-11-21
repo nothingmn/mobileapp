@@ -21,9 +21,11 @@ data class PreferredDevice(val address: String, val name: String)
  * [BakedVoiceDefaults] and [VoiceConnectionDefaults]); a build that bakes nothing — which is what this
  * repository ships — leaves them empty, and [errors] then says so field by field until the user supplies them.
  *
- * The two speaking switches are independent, and neither is forced:
+ * The speaking switches are independent, and none is forced:
  * - [speakReplies] (default on) is whether replies are spoken at all. Off is the user's own choice, so the
  *   silence that follows is correct: the reply still arrives, and a later increment still writes it to the note.
+ * - [speakUnsolicited] (default on) is whether a message the phone never asked for is spoken; off, it is still
+ *   captured and listed, and only a matched reply is spoken.
  * - [headsetOnly] (default on) is whether playback is restricted to Bluetooth. Off means whatever output is
  *   active, the phone's speaker included.
  *
@@ -42,6 +44,17 @@ data class VoiceSettings(
     val ingressTopic: String = "",
     val egressTopic: String = "",
     val speakReplies: Boolean = true,
+    /**
+     * "Speak everything on the reply topic", default **on**: a message that arrives on the reply filter and
+     * carries words is spoken even though this phone never asked for it — a reminder pushed from the broker, for
+     * instance. It is never filed, because there is no recording behind it.
+     *
+     * The risk it takes is the one the switch's own subtitle states: the broker has no per-client partition, so
+     * anything published on that filter is read aloud, including another client's message. Off, those messages
+     * are still captured and listed, and only a matched answer is spoken. A matched answer's behaviour does not
+     * depend on this switch at all.
+     */
+    val speakUnsolicited: Boolean = true,
     val headsetOnly: Boolean = true,
     /** The one Bluetooth device replies may be spoken on; null means any of them. */
     val preferredDevice: PreferredDevice? = null,
@@ -95,7 +108,8 @@ data class VoiceSettings(
     override fun toString(): String =
         "VoiceSettings(enabled=$enabled, server=$serverUri, tls=$tls, trustSelfSigned=$trustSelfSigned, " +
             "username=${if (username.isEmpty()) "" else "<set>"}, password=${if (password.isEmpty()) "" else "<set>"}, " +
-            "ingress=$ingressTopic, egress=$egressTopic, speakReplies=$speakReplies, headsetOnly=$headsetOnly, " +
+            "ingress=$ingressTopic, egress=$egressTopic, speakReplies=$speakReplies, " +
+            "speakUnsolicited=$speakUnsolicited, headsetOnly=$headsetOnly, " +
             "headset=${preferredDevice?.name ?: "any"}, engine=${ttsEngine ?: "system default"}, " +
             "voice=${preferredVoice ?: "automatic"}, offlineOnly=$offlineOnly, " +
             "disableAppReminders=$disableAppReminders)"

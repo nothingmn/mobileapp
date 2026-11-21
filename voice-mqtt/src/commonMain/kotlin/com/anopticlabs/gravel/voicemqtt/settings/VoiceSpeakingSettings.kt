@@ -25,6 +25,13 @@ object VoiceSpeakingSettings {
     const val KEY_PREFERRED_VOICE = "preferredVoice"
     const val KEY_OFFLINE_ONLY = "offlineOnly"
 
+    /**
+     * "Speak everything on the reply topic". A file written before the switch existed reads back as ON, which is
+     * the position the operator asked for: a reminder from his own broker is spoken without him having to find
+     * the switch first.
+     */
+    const val KEY_SPEAK_UNSOLICITED = "speakUnsolicited"
+
     /** The first increment's keys: its headset choice and the switch it never wrote. */
     const val LEGACY_KEY_SPEAK_ONLY_WITH_HEADSET = "speakOnlyWithHeadset"
     const val LEGACY_KEY_HEADSET_ADDRESS = "headsetAddress"
@@ -33,6 +40,7 @@ object VoiceSpeakingSettings {
     /** What the speaking section holds, read back from [stored]. */
     data class Speaking(
         val speakReplies: Boolean,
+        val speakUnsolicited: Boolean,
         val headsetOnly: Boolean,
         val preferredDevice: PreferredDevice?,
         val ttsEngine: String? = null,
@@ -42,6 +50,9 @@ object VoiceSpeakingSettings {
 
     fun read(stored: Map<String, Any?>): Speaking = Speaking(
         speakReplies = stored[KEY_SPEAK_REPLIES] as? Boolean ?: true,
+        // A file written before the switch existed reads back as ON: the operator asked to hear what arrives,
+        // and a message he did not ask for is still listed even with it off.
+        speakUnsolicited = stored[KEY_SPEAK_UNSOLICITED] as? Boolean ?: true,
         headsetOnly = (stored[KEY_HEADSET_ONLY] as? Boolean)
             ?: (stored[LEGACY_KEY_SPEAK_ONLY_WITH_HEADSET] as? Boolean)
             ?: true,

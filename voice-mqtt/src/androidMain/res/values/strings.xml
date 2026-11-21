@@ -35,6 +35,8 @@
     <string name="voice_section_speaking">Speaking</string>
     <string name="voice_toggle_speak_replies_title">Speak the replies</string>
     <string name="voice_toggle_speak_replies_description">Off means nothing is played aloud. The answer still arrives and is still kept with the note.</string>
+    <string name="voice_toggle_speak_unsolicited_title">Speak everything on the reply topic</string>
+    <string name="voice_toggle_speak_unsolicited_description">On speaks anything that arrives on the reply filter, reminders included. The broker has no per-client partition, so another client\'s message can be read aloud.</string>
     <string name="voice_toggle_headset_only_title">Only play through a Bluetooth headset</string>
     <string name="voice_toggle_headset_only_description">On means a headset must be connected at the moment the answer arrives. Off plays through whatever the phone is using, its own speaker included.</string>
     <string name="voice_picker_device_line">Replies play on: %1$s</string>
@@ -47,6 +49,15 @@
     <string name="voice_section_recordings">Recordings</string>
     <string name="voice_toggle_disable_app_reminders_title">Disable app reminders</string>
     <string name="voice_toggle_disable_app_reminders_description">On keeps a recording that sounds like a reminder as a note instead. Nothing is scheduled and no reminder is created in this app.</string>
+
+    <!-- What arrived on the reply filter: the inventory, spoken or not. -->
+    <string name="voice_section_captured">Messages received</string>
+    <string name="voice_capture_bound">The last 50 messages on the reply filter, newest first.</string>
+    <string name="voice_capture_empty">Nothing has arrived on the reply filter yet.</string>
+    <string name="voice_capture_entry">%1$s · %2$s · %3$s · %4$s</string>
+    <string name="voice_capture_matched">Answered our request</string>
+    <string name="voice_capture_unmatched">Not one of our requests</string>
+    <string name="voice_capture_no_topic">no topic recorded</string>
 
     <!-- The ongoing notification while a reply is being spoken, and the button that stops it. -->
     <string name="voice_speaking_channel">Reply speaking</string>

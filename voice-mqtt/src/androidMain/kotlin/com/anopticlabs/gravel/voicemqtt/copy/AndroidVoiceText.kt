@@ -58,6 +58,8 @@ class AndroidVoiceText(context: Context) : VoiceText {
             VoiceKeys.SECTION_SPEAKING -> R.string.voice_section_speaking
             VoiceKeys.TOGGLE_SPEAK_REPLIES_TITLE -> R.string.voice_toggle_speak_replies_title
             VoiceKeys.TOGGLE_SPEAK_REPLIES_DESCRIPTION -> R.string.voice_toggle_speak_replies_description
+            VoiceKeys.TOGGLE_SPEAK_UNSOLICITED_TITLE -> R.string.voice_toggle_speak_unsolicited_title
+            VoiceKeys.TOGGLE_SPEAK_UNSOLICITED_DESCRIPTION -> R.string.voice_toggle_speak_unsolicited_description
             VoiceKeys.TOGGLE_HEADSET_ONLY_TITLE -> R.string.voice_toggle_headset_only_title
             VoiceKeys.TOGGLE_HEADSET_ONLY_DESCRIPTION -> R.string.voice_toggle_headset_only_description
             VoiceKeys.PICKER_DEVICE_LINE -> R.string.voice_picker_device_line
@@ -65,6 +67,13 @@ class AndroidVoiceText(context: Context) : VoiceText {
             VoiceKeys.HINT_DEVICE_HEADSET_ONLY -> R.string.voice_hint_device_headset_only
             VoiceKeys.HINT_DEVICES_PERMISSION -> R.string.voice_hint_devices_permission
             VoiceKeys.SPEECH_LAST_NOT_PLAYED -> R.string.voice_speech_last_not_played
+            VoiceKeys.SECTION_CAPTURED -> R.string.voice_section_captured
+            VoiceKeys.CAPTURE_BOUND -> R.string.voice_capture_bound
+            VoiceKeys.CAPTURE_EMPTY -> R.string.voice_capture_empty
+            VoiceKeys.CAPTURE_ENTRY -> R.string.voice_capture_entry
+            VoiceKeys.CAPTURE_MATCHED -> R.string.voice_capture_matched
+            VoiceKeys.CAPTURE_UNMATCHED -> R.string.voice_capture_unmatched
+            VoiceKeys.CAPTURE_NO_TOPIC -> R.string.voice_capture_no_topic
             VoiceKeys.SECTION_RECORDINGS -> R.string.voice_section_recordings
             VoiceKeys.TOGGLE_DISABLE_APP_REMINDERS_TITLE -> R.string.voice_toggle_disable_app_reminders_title
             VoiceKeys.TOGGLE_DISABLE_APP_REMINDERS_DESCRIPTION -> R.string.voice_toggle_disable_app_reminders_description

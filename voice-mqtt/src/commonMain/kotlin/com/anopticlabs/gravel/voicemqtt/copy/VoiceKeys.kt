@@ -39,6 +39,8 @@ object VoiceKeys {
     const val SECTION_SPEAKING = "voice_section_speaking"
     const val TOGGLE_SPEAK_REPLIES_TITLE = "voice_toggle_speak_replies_title"
     const val TOGGLE_SPEAK_REPLIES_DESCRIPTION = "voice_toggle_speak_replies_description"
+    const val TOGGLE_SPEAK_UNSOLICITED_TITLE = "voice_toggle_speak_unsolicited_title"
+    const val TOGGLE_SPEAK_UNSOLICITED_DESCRIPTION = "voice_toggle_speak_unsolicited_description"
     const val TOGGLE_HEADSET_ONLY_TITLE = "voice_toggle_headset_only_title"
     const val TOGGLE_HEADSET_ONLY_DESCRIPTION = "voice_toggle_headset_only_description"
     const val PICKER_DEVICE_LINE = "voice_picker_device_line"
@@ -46,6 +48,15 @@ object VoiceKeys {
     const val HINT_DEVICE_HEADSET_ONLY = "voice_hint_device_headset_only"
     const val HINT_DEVICES_PERMISSION = "voice_hint_devices_permission"
     const val SPEECH_LAST_NOT_PLAYED = "voice_speech_last_not_played"
+    // What arrived on the reply filter: the inventory, spoken or not.
+    const val SECTION_CAPTURED = "voice_section_captured"
+    const val CAPTURE_BOUND = "voice_capture_bound"
+    const val CAPTURE_EMPTY = "voice_capture_empty"
+    const val CAPTURE_ENTRY = "voice_capture_entry"
+    const val CAPTURE_MATCHED = "voice_capture_matched"
+    const val CAPTURE_UNMATCHED = "voice_capture_unmatched"
+    const val CAPTURE_NO_TOPIC = "voice_capture_no_topic"
+
     const val SECTION_RECORDINGS = "voice_section_recordings"
     const val TOGGLE_DISABLE_APP_REMINDERS_TITLE = "voice_toggle_disable_app_reminders_title"
     const val TOGGLE_DISABLE_APP_REMINDERS_DESCRIPTION = "voice_toggle_disable_app_reminders_description"
@@ -149,6 +160,15 @@ object VoiceKeys {
         SECTION_SPEAKING,
         TOGGLE_SPEAK_REPLIES_TITLE,
         TOGGLE_SPEAK_REPLIES_DESCRIPTION,
+        TOGGLE_SPEAK_UNSOLICITED_TITLE,
+        TOGGLE_SPEAK_UNSOLICITED_DESCRIPTION,
+        SECTION_CAPTURED,
+        CAPTURE_BOUND,
+        CAPTURE_EMPTY,
+        CAPTURE_ENTRY,
+        CAPTURE_MATCHED,
+        CAPTURE_UNMATCHED,
+        CAPTURE_NO_TOPIC,
         TOGGLE_HEADSET_ONLY_TITLE,
         TOGGLE_HEADSET_ONLY_DESCRIPTION,
         PICKER_DEVICE_LINE,
