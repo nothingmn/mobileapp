@@ -43,6 +43,11 @@
     <string name="voice_hint_devices_permission">Allow the Nearby devices permission to choose one paired headset.</string>
     <string name="voice_speech_last_not_played">Last reply was not played: %1$s</string>
 
+    <!-- What a recording becomes: the one switch here that changes what the Notebook stores. -->
+    <string name="voice_section_recordings">Recordings</string>
+    <string name="voice_toggle_disable_app_reminders_title">Disable app reminders</string>
+    <string name="voice_toggle_disable_app_reminders_description">On keeps a recording that sounds like a reminder as a note instead. Nothing is scheduled and no reminder is created in this app.</string>
+
     <!-- The ongoing notification while a reply is being spoken, and the button that stops it. -->
     <string name="voice_speaking_channel">Reply speaking</string>
     <string name="voice_speaking_title">Speaking the reply</string>

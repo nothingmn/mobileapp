@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import com.anopticlabs.gravel.notebook.pipeline.AppReminderGate
 import com.anopticlabs.gravel.notebook.pipeline.NoteReplySink
 import com.anopticlabs.gravel.notebook.pipeline.NoteStoreReplyNotes
 import com.anopticlabs.gravel.notebook.pipeline.NoteStoreReplySink
@@ -57,6 +58,9 @@ val voiceMqttModule: Module = module {
         // The answer is filed into the note the recording produced, through the notebook's own store. Bound
         // only here and only with the flag on, which is what leaves the append out of a build without the loop.
         single<NoteReplySink> { NoteStoreReplySink(NoteStoreReplyNotes(get())) }
+        // "Disable app reminders": the Notebook asks this at the moment a capture is published, so with the flag
+        // off nothing is bound and the answer is "reminders are allowed" — today's behaviour.
+        single<AppReminderGate> { AndroidAppReminderGate(get<VoiceMqttEngine>().controller) }
         single<VoiceMqttSettings> { AndroidVoiceMqttSettings(get()) }
         single<TextToSpeechSettings> { AndroidTextToSpeechSettings(get()) }
     }
@@ -68,6 +72,17 @@ private class AndroidVoiceTurnSink(private val controller: com.anopticlabs.grave
 
     override fun rememberNote(requestId: String, noteId: String, title: String) =
         controller.rememberNote(requestId, noteId, title)
+}
+
+/**
+ * The Notebook's gate on its own reminders, closed by the switch on the Voice Assistant page.
+ *
+ * Read when a capture is published, so a flip takes effect on the next recording with no restart and no
+ * reconnect — and it keeps its position whether the loop is on or off, because "do not make reminders in this
+ * app" is not a statement about the broker.
+ */
+private class AndroidAppReminderGate(private val controller: com.anopticlabs.gravel.voicemqtt.VoiceMqttController) : AppReminderGate {
+    override val remindersAllowed: Boolean get() = !controller.settings.value.disableAppReminders
 }
 
 /** Settings > Voice Assistant, drawn by the voice module's own Compose screen. */
@@ -92,6 +107,7 @@ private class AndroidVoiceMqttSettings(private val engine: VoiceMqttEngine) : Vo
             gate = engine.gate,
             onSave = { controller.save(it) },
             onSendTest = { scope.launch { controller.sendTestMessage() } },
+            onSaveCaptureBehaviour = { controller.saveCaptureBehaviour(it) },
             speechRuns = engine.speechRuns.collectAsState().value,
             replyFiles = engine.replyFiles.collectAsState().value,
         )

@@ -46,6 +46,9 @@ object VoiceKeys {
     const val HINT_DEVICE_HEADSET_ONLY = "voice_hint_device_headset_only"
     const val HINT_DEVICES_PERMISSION = "voice_hint_devices_permission"
     const val SPEECH_LAST_NOT_PLAYED = "voice_speech_last_not_played"
+    const val SECTION_RECORDINGS = "voice_section_recordings"
+    const val TOGGLE_DISABLE_APP_REMINDERS_TITLE = "voice_toggle_disable_app_reminders_title"
+    const val TOGGLE_DISABLE_APP_REMINDERS_DESCRIPTION = "voice_toggle_disable_app_reminders_description"
     const val SPEAKING_CHANNEL = "voice_speaking_channel"
     const val SPEAKING_TITLE = "voice_speaking_title"
     const val SPEAKING_BODY = "voice_speaking_body"
@@ -150,6 +153,9 @@ object VoiceKeys {
         HINT_DEVICE_HEADSET_ONLY,
         HINT_DEVICES_PERMISSION,
         SPEECH_LAST_NOT_PLAYED,
+        SECTION_RECORDINGS,
+        TOGGLE_DISABLE_APP_REMINDERS_TITLE,
+        TOGGLE_DISABLE_APP_REMINDERS_DESCRIPTION,
         SPEAKING_CHANNEL,
         SPEAKING_TITLE,
         SPEAKING_BODY,

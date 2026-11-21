@@ -59,6 +59,13 @@ data class VoiceSettings(
      * which the settings screen states plainly before it is turned off.
      */
     val offlineOnly: Boolean = true,
+    /**
+     * "Disable app reminders", default off: on, a recording that would have become a reminder is kept as a note
+     * instead — its words intact, nothing scheduled — so a reminder system run elsewhere sees no duplicates.
+     * This is the voice loop's one switch that changes what the Notebook does with a capture, and it is read by
+     * the Notebook through [com.anopticlabs.gravel.notebook.pipeline.AppReminderGate] rather than by this module.
+     */
+    val disableAppReminders: Boolean = false,
 ) {
     /** Field-keyed inline errors; empty means the settings may be used. Copy, resolved by the screen. */
     fun errors(): Map<VoiceField, VoiceCopy> = buildMap {
@@ -90,5 +97,6 @@ data class VoiceSettings(
             "username=${if (username.isEmpty()) "" else "<set>"}, password=${if (password.isEmpty()) "" else "<set>"}, " +
             "ingress=$ingressTopic, egress=$egressTopic, speakReplies=$speakReplies, headsetOnly=$headsetOnly, " +
             "headset=${preferredDevice?.name ?: "any"}, engine=${ttsEngine ?: "system default"}, " +
-            "voice=${preferredVoice ?: "automatic"}, offlineOnly=$offlineOnly)"
+            "voice=${preferredVoice ?: "automatic"}, offlineOnly=$offlineOnly, " +
+            "disableAppReminders=$disableAppReminders)"
 }

@@ -263,6 +263,44 @@ never suppress, delay or undo the speech. Each attempt leaves one entry in the l
 into "Garage"*, or the reason it was not — which the settings screen shows as the last line above the save
 button.
 
+## Turning the app's own reminders off
+
+**Settings > Voice Assistant > Recordings > Disable app reminders.** Off by default. On, a recording that the
+Notebook would have turned into a reminder is kept as a **note** instead, so a reminder system run somewhere
+else never sees a second copy of the same intention — and nothing the user said is lost on the way.
+
+**It converts, it does not drop.** The capture's message becomes the body of a new note, verbatim and uncut
+(the reminder's own 4000-character cap exists because a reminder message travels inside an alarm intent and a
+notification, and a note has no such journey); its opening line becomes the note's title, cut at a word
+boundary so it reads in a list. The note lands in **unclassified**, because nothing classified it: the capture
+asked for a reminder, not a note, so no model produced a title, tags or a folder. No reminder row is written, no
+alarm is armed, no set notice is posted and no reminder time is invented — a message with no usable time is
+simply a note with no time, where before it would have taken the quick-remind default.
+
+**Where it acts, and why there.** The switch is read at the one point that decides what a capture becomes: the
+Notebook's publish step, in the branch that turns a reminder-shaped capture into a reminder. That is the only
+place where "reminder" is still a decision rather than a fact — earlier, the capture is just a transcript;
+later, a row and an alarm already exist and would have to be torn down. The screen never suppresses anything
+itself: it stores a flag, and the Notebook asks for it each time it publishes, so a flip applies to the next
+recording with no app restart and no broker reconnect. The switch also keeps its position whether the voice
+loop is on or off, because "do not make reminders in this app" is a statement about the Notebook, not about the
+broker.
+
+**How :notebook stays ignorant of MQTT.** The flag crosses the module seam, never the dependency graph: the
+Notebook declares `AppReminderGate` and its publish step asks for it with the same `getOrNull` lookup it uses for
+the capture drain's other seams, and the app binds an implementation only when `VOICE_MQTT_ENABLED` is on. With
+the flag off nothing is bound, nothing is asked, and the answer defaults to **reminders are allowed** — so a
+build without the loop, and a stock phone that never opens this screen, behave byte for byte as they did before
+the switch existed. The switch itself only exists on the flag-on screen; a flag-off build has no Voice
+Assistant page to put it on.
+
+| switch | the capture | what is written |
+|---|---|---|
+| off / nothing bound | a reminder-shaped capture | a reminder, armed, exactly as before |
+| on | a reminder-shaped capture | a note with the message whole; no reminder, no alarm |
+| either | a note-shaped capture | unchanged: the note the model described |
+| either | a completion claim | unchanged: the claim is still parked for review |
+
 ## Speech output and privacy
 
 The reply is spoken by the phone's own text-to-speech engine, and **which voice** that engine uses is decided

@@ -65,6 +65,9 @@ class AndroidVoiceText(context: Context) : VoiceText {
             VoiceKeys.HINT_DEVICE_HEADSET_ONLY -> R.string.voice_hint_device_headset_only
             VoiceKeys.HINT_DEVICES_PERMISSION -> R.string.voice_hint_devices_permission
             VoiceKeys.SPEECH_LAST_NOT_PLAYED -> R.string.voice_speech_last_not_played
+            VoiceKeys.SECTION_RECORDINGS -> R.string.voice_section_recordings
+            VoiceKeys.TOGGLE_DISABLE_APP_REMINDERS_TITLE -> R.string.voice_toggle_disable_app_reminders_title
+            VoiceKeys.TOGGLE_DISABLE_APP_REMINDERS_DESCRIPTION -> R.string.voice_toggle_disable_app_reminders_description
             VoiceKeys.SPEAKING_CHANNEL -> R.string.voice_speaking_channel
             VoiceKeys.SPEAKING_TITLE -> R.string.voice_speaking_title
             VoiceKeys.SPEAKING_BODY -> R.string.voice_speaking_body

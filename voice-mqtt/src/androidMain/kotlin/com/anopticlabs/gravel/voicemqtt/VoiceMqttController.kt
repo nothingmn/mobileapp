@@ -111,6 +111,14 @@ class VoiceMqttController(
      */
     fun saveSpeaking(next: VoiceSettings): VoiceSettings = store.update { next }
 
+    /**
+     * Stores a change that only affects what the Notebook does with a capture — "Disable app reminders". The
+     * connection is left alone for the same reason [saveSpeaking] leaves it alone: the transport never reads it,
+     * and the Notebook reads the stored value the next time it publishes a capture, so the switch takes effect
+     * without pressing Save and without a reconnect.
+     */
+    fun saveCaptureBehaviour(next: VoiceSettings): VoiceSettings = store.update { next }
+
     /** A transcribed turn; the requestId it was published under, or null when it was not sent. */
     suspend fun publishTranscript(text: String): String? {
         val current = store.settings.value

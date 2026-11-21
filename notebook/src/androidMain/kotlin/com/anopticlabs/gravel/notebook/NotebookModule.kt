@@ -53,6 +53,7 @@ import com.anopticlabs.gravel.notebook.pipeline.ServerCheck
 import com.anopticlabs.gravel.notebook.pipeline.ServerNetworkWatch
 import com.anopticlabs.gravel.notebook.pipeline.SpeechSettingWatch
 import com.anopticlabs.gravel.notebook.pipeline.VoiceTurnSink
+import com.anopticlabs.gravel.notebook.pipeline.appRemindersAllowed
 import com.anopticlabs.gravel.notebook.pipeline.WorkManagerNetworkWork
 import com.anopticlabs.gravel.notebook.pipeline.WorkManagerServerTryWork
 import com.anopticlabs.gravel.network.UnmeteredWifi
@@ -202,6 +203,9 @@ val notebookModule = module {
             notes = get(), reminders = get(), completions = get(), alarms = get(), notifier = get(),
             refresh = get(), quickRemindMinutes = { get<NotebookPreferences>().quickRemindMinutes },
             appBackgrounded = { get<AppVisibility>().isBackgrounded },
+            // Gravel: the voice loop's "Disable app reminders" switch. Nothing is bound without
+            // VOICE_MQTT_ENABLED, and an unbound gate allows reminders, which is today's behaviour.
+            remindersAllowed = { appRemindersAllowed() },
         )
     }
     single {

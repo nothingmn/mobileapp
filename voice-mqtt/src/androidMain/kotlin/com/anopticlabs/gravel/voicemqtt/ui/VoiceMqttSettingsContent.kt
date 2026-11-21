@@ -64,6 +64,12 @@ fun VoiceMqttSettingsContent(
     gate: BluetoothAudioGate,
     onSave: (VoiceSettings) -> Unit,
     onSendTest: () -> Unit,
+    /**
+     * Stores a change that only affects what the Notebook does with a recording ("Disable app reminders"), so the
+     * switch takes effect at once and the broker connection is left alone. Defaults to [onSave] for a caller that
+     * has only the one save path.
+     */
+    onSaveCaptureBehaviour: (VoiceSettings) -> Unit = onSave,
     speechRuns: List<VoiceSpeechRun> = emptyList(),
     replyFiles: List<VoiceReplyFileRun> = emptyList(),
 ) {
@@ -291,6 +297,16 @@ fun VoiceMqttSettingsContent(
         replyFiles.firstOrNull()?.let { run ->
             Text(filingSentence(run, text), style = MaterialTheme.typography.bodySmall)
         }
+
+        // What a recording becomes. Kept apart from Speaking because it is not about the reply: it is the one
+        // switch here that changes what the Notebook stores, and it takes effect the moment it is flipped.
+        Text(stringResource(R.string.voice_section_recordings), style = MaterialTheme.typography.titleMedium)
+        ToggleRow(
+            title = stringResource(R.string.voice_toggle_disable_app_reminders_title),
+            description = stringResource(R.string.voice_toggle_disable_app_reminders_description),
+            checked = draft.disableAppReminders,
+            onCheckedChange = { onSaveCaptureBehaviour(draft.copy(disableAppReminders = it)) },
+        )
 
         Button(
             onClick = { onSave(draft) },

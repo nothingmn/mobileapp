@@ -18,6 +18,8 @@ import java.util.UUID
  *
  * [VoiceSettings.speakReplies] and [VoiceSettings.headsetOnly] are independent switches with an OFF position
  * each, stored like any other value and read back as the user left them: nothing here forces a value.
+ * [VoiceSettings.disableAppReminders] is stored the same way and is off until the user turns it on, so a phone
+ * that has never touched it keeps the behaviour it had before the switch existed.
  *
  * The connection fields — address, port, TLS, both topics — are read through [VoiceConnectionDefaults], so a
  * value the user saved wins over a value [baked] into the build, and a build that baked in nothing leaves them
@@ -84,6 +86,7 @@ class VoiceSettingsStore(
             ttsEngine = speaking.ttsEngine,
             preferredVoice = speaking.preferredVoice,
             offlineOnly = speaking.offlineOnly,
+            disableAppReminders = prefs.getBoolean(KEY_DISABLE_APP_REMINDERS, false),
         )
     }
 
@@ -116,6 +119,7 @@ class VoiceSettingsStore(
         editor.putStringOrRemove(VoiceSpeakingSettings.KEY_TTS_ENGINE, next.ttsEngine)
             .putStringOrRemove(VoiceSpeakingSettings.KEY_PREFERRED_VOICE, next.preferredVoice)
             .putBoolean(VoiceSpeakingSettings.KEY_OFFLINE_ONLY, next.offlineOnly)
+            .putBoolean(KEY_DISABLE_APP_REMINDERS, next.disableAppReminders)
         // The first increment's keys are migrated on read and gone after the first save, so a value it wrote
         // can never come back over a choice the user has since changed.
         editor.remove(VoiceSpeakingSettings.LEGACY_KEY_HEADSET_ADDRESS)
@@ -150,6 +154,8 @@ class VoiceSettingsStore(
         const val KEY_PASSWORD = "password"
         const val KEY_INGRESS = "ingressTopic"
         const val KEY_EGRESS = "egressTopic"
+        /** "Disable app reminders": false is the shipped position, so an upgraded phone keeps today's behaviour. */
+        const val KEY_DISABLE_APP_REMINDERS = "disableAppReminders"
     }
 }
 

@@ -6,6 +6,7 @@ import com.anopticlabs.gravel.notebook.alarms.FakeSettings
 import com.anopticlabs.gravel.notebook.alarms.ReminderAlarmScheduler
 import com.anopticlabs.gravel.notebook.alarms.ReminderAlarms
 import com.anopticlabs.gravel.notebook.notes.BuiltNote
+import com.anopticlabs.gravel.notebook.notes.MAX_CONVERTED_TITLE_CHARS
 import com.anopticlabs.gravel.notebook.reminders.MAX_REMINDER_MESSAGE_CHARS
 import com.anopticlabs.gravel.notebook.reminders.ReminderEventKey
 import com.anopticlabs.gravel.notebook.reminders.ReminderItem
@@ -58,6 +59,7 @@ class CapturePublisherTest {
         scheduler: ReminderAlarmScheduler = FakeScheduler(),
         quickRemindMinutes: Int = 30,
         refresh: ReminderRefreshSignal = ReminderRefreshSignal(),
+        remindersAllowed: () -> Boolean = { true },
     ) = CapturePublisher(
         notes = notes,
         reminders = reminders,
@@ -69,6 +71,15 @@ class CapturePublisherTest {
         appBackgrounded = { backgrounded },
         now = { now },
         newId = { "id-${++ids}" },
+        remindersAllowed = remindersAllowed,
+        zone = { TimeZone.UTC },
+    )
+
+    /** A publisher built without the reminder switch at all: the shape a build without the voice loop gets. */
+    private fun publisherWithNothingBound() = CapturePublisher(
+        notes, reminders, completions,
+        ReminderAlarms(reminders, events, FakeScheduler(), notifier, FakeSettings(), ReminderRefreshSignal(), { now }, { TimeZone.UTC }),
+        notifier, ReminderRefreshSignal(), { 30 }, { true }, { now }, { "id-${++ids}" },
     )
 
     private fun note(folder: String = "shopping", title: String = "Buy milk", body: String = "get milk") = BuiltCapture.Note(
@@ -302,5 +313,96 @@ class CapturePublisherTest {
         assertIs<PublishedCapture.ReminderSet>(publisher.publish(reminder(ReminderTimeStatus.TO_CHECK), now, emptyList()))
         assertEquals(1, completions.readAll(strict = true).size)
         assertTrue(reminders.readAll(strict = true).single().timeToCheck)
+    }
+
+    // Gravel's "Disable app reminders". Closed — the shipped position — a reminder capture runs down exactly the
+    // path it always did; open, it is a note with its words intact and nothing about a reminder is written.
+
+    @Test
+    fun withTheSwitchOffAReminderIsSetExactlyAsBefore() = runBlocking<Unit> {
+        val scheduler = FakeScheduler()
+        val published = assertIs<PublishedCapture.ReminderSet>(
+            publisher(scheduler, remindersAllowed = { true }).publish(reminder(ReminderTimeStatus.USABLE, now + 10 * minute), now, emptyList()),
+        )
+        val stored = reminders.readAll(strict = true).single()
+        assertEquals(ReminderItem(stored.id, now + 10 * minute, "Check the oven"), stored)
+        assertEquals(stored, published.reminder)
+        assertEquals(stored, scheduler.fires.getValue(stored.id))
+        assertTrue(notes.readMetadata(strict = true).isEmpty())
+    }
+
+    /** With nothing bound — a build without the voice loop — the publisher's own default allows reminders. */
+    @Test
+    fun withNothingBoundAReminderIsStillSet() = runBlocking<Unit> {
+        val published = assertIs<PublishedCapture.ReminderSet>(
+            publisherWithNothingBound().publish(reminder(ReminderTimeStatus.NO_TIME), now, emptyList()),
+        )
+        assertEquals(1, reminders.readAll(strict = true).size)
+        assertEquals(published.reminder, reminders.readAll(strict = true).single())
+        assertTrue(notes.readMetadata(strict = true).isEmpty())
+    }
+
+    @Test
+    fun withTheSwitchOnAReminderBecomesANoteAndNothingIsArmed() = runBlocking<Unit> {
+        val scheduler = FakeScheduler()
+        val published = assertIs<PublishedCapture.NoteSaved>(
+            publisher(scheduler, remindersAllowed = { false })
+                .publish(reminder(ReminderTimeStatus.USABLE, now + 10 * minute), now, listOf("unclassified", "shopping")),
+        )
+        assertEquals("Check the oven", published.title)
+        assertEquals("unclassified", notes.readMetadata(strict = true).getValue(published.noteId).folder)
+        assertTrue(notes.readNote(published.noteId, strict = true)!!.contains("Check the oven"))
+        assertTrue(reminders.readAll(strict = true).isEmpty(), "no reminder row was written")
+        assertTrue(scheduler.fires.isEmpty(), "no alarm was armed")
+        assertTrue(notifier.setNotices.isEmpty(), "no reminder notice was posted")
+    }
+
+    /** A reminder with no usable time took the quick-remind default before; converted, no time is invented. */
+    @Test
+    fun withTheSwitchOnAReminderWithNoTimeBecomesANoteToo() = runBlocking<Unit> {
+        val scheduler = FakeScheduler()
+        for (status in listOf(ReminderTimeStatus.NO_TIME, ReminderTimeStatus.TO_CHECK)) {
+            val published = assertIs<PublishedCapture.NoteSaved>(
+                publisher(scheduler, remindersAllowed = { false }).publish(reminder(status), now, emptyList()),
+            )
+            assertTrue(notes.readNote(published.noteId, strict = true)!!.contains("Check the oven"), "$status")
+        }
+        assertTrue(reminders.readAll(strict = true).isEmpty())
+        assertTrue(scheduler.fires.isEmpty())
+    }
+
+    /** The note keeps every word: the reminder's own length cap exists for alarm intents, and nothing is cut here. */
+    @Test
+    fun aMessageLongerThanAReminderMayHoldIsKeptWholeInTheNote() = runBlocking<Unit> {
+        val long = "x".repeat(MAX_REMINDER_MESSAGE_CHARS) + " and the last words of a long reminder survive"
+        assertTrue(long.length > MAX_REMINDER_MESSAGE_CHARS)
+        val published = assertIs<PublishedCapture.NoteSaved>(
+            publisher(remindersAllowed = { false }).publish(reminder(ReminderTimeStatus.NO_TIME, message = long), now, emptyList()),
+        )
+        val markdown = notes.readNote(published.noteId, strict = true)!!
+        assertTrue(markdown.contains(long), "the note's body holds the message verbatim")
+        assertTrue(published.title.length <= MAX_CONVERTED_TITLE_CHARS, "the title is readable: ${published.title.length} chars")
+        assertTrue(reminders.readAll(strict = true).isEmpty())
+    }
+
+    @Test
+    fun aNoteIsUnaffectedByTheSwitchInEitherPosition() = runBlocking<Unit> {
+        for (allowed in listOf(true, false)) {
+            notes.ensureFolder("shopping")
+            val published = assertIs<PublishedCapture.NoteSaved>(publisher(remindersAllowed = { allowed }).publish(note(), now, listOf("unclassified", "shopping")))
+            assertEquals("---\ntitle: Buy milk\n---\nget milk\n", notes.readNote(published.noteId, strict = true), "allowed=$allowed")
+            assertTrue(reminders.readAll(strict = true).isEmpty())
+        }
+    }
+
+    /** Read at each publish, not once at construction: a flip applies to the next capture, with no restart. */
+    @Test
+    fun theSwitchIsReadAtEveryCapture() = runBlocking<Unit> {
+        var disableReminders = false
+        val publisher = publisher(remindersAllowed = { !disableReminders })
+        assertIs<PublishedCapture.ReminderSet>(publisher.publish(reminder(ReminderTimeStatus.NO_TIME, message = "first"), now, emptyList()))
+        disableReminders = true
+        assertIs<PublishedCapture.NoteSaved>(publisher.publish(reminder(ReminderTimeStatus.NO_TIME, message = "second"), now, emptyList()))
+        assertEquals(listOf("first"), reminders.readAll(strict = true).map { it.message })
     }
 }
