@@ -52,6 +52,9 @@
 
     <!-- Ce qui est arrivé sur le filtre des réponses : l'inventaire, lu ou non. -->
     <string name="voice_section_captured">Messages reçus</string>
+    <string name="voice_capture_count">%1$s (%2$d)</string>
+    <string name="voice_capture_state_expanded">Développé</string>
+    <string name="voice_capture_state_collapsed">Réduit</string>
     <string name="voice_capture_bound">Les 50 derniers messages du filtre des réponses, du plus récent au plus ancien.</string>
     <string name="voice_capture_empty">Rien n\'est encore arrivé sur le filtre des réponses.</string>
     <string name="voice_capture_entry">%1$s · %2$s · %3$s · %4$s</string>

@@ -50,6 +50,10 @@ object VoiceKeys {
     const val SPEECH_LAST_NOT_PLAYED = "voice_speech_last_not_played"
     // What arrived on the reply filter: the inventory, spoken or not.
     const val SECTION_CAPTURED = "voice_section_captured"
+    // The section's header: its label and the count, and the fold state a screen reader announces.
+    const val CAPTURE_COUNT = "voice_capture_count"
+    const val CAPTURE_STATE_EXPANDED = "voice_capture_state_expanded"
+    const val CAPTURE_STATE_COLLAPSED = "voice_capture_state_collapsed"
     const val CAPTURE_BOUND = "voice_capture_bound"
     const val CAPTURE_EMPTY = "voice_capture_empty"
     const val CAPTURE_ENTRY = "voice_capture_entry"
@@ -163,6 +167,9 @@ object VoiceKeys {
         TOGGLE_SPEAK_UNSOLICITED_TITLE,
         TOGGLE_SPEAK_UNSOLICITED_DESCRIPTION,
         SECTION_CAPTURED,
+        CAPTURE_COUNT,
+        CAPTURE_STATE_EXPANDED,
+        CAPTURE_STATE_COLLAPSED,
         CAPTURE_BOUND,
         CAPTURE_EMPTY,
         CAPTURE_ENTRY,

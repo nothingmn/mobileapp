@@ -1,5 +1,6 @@
 package com.anopticlabs.gravel.voicemqtt.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,9 +9,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -25,12 +30,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.anopticlabs.gravel.notebook.pipeline.NoteReplyResult
 import com.anopticlabs.gravel.voicemqtt.R
+import com.anopticlabs.gravel.voicemqtt.capture.CaptureListSection
 import com.anopticlabs.gravel.voicemqtt.capture.VoiceCapturedMessage
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionPhase
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionState
@@ -91,6 +100,9 @@ fun VoiceMqttSettingsContent(
     var showPassword by remember { mutableStateOf(false) }
     var pickerOpen by remember { mutableStateOf(false) }
     var lastAction by remember { mutableStateOf<String?>(null) }
+    // The captured-messages list starts folded on every entry to this page, and nothing remembers it opened: the
+    // page builds a fresh section each time it is drawn.
+    var captureSection by remember { mutableStateOf(CaptureListSection()) }
     val paired = remember(gate) { gate.pairedDevices() }
     val canListDevices = remember(gate) { gate.canListDevices() }
     val errors = draft.errors()
@@ -325,25 +337,60 @@ fun VoiceMqttSettingsContent(
         )
 
         // The inventory: every message the filter delivered, whether it was spoken, filed, or neither. It is the
-        // answer to "what is actually reaching this phone", which no other screen can give.
-        Text(stringResource(R.string.voice_section_captured), style = MaterialTheme.typography.titleMedium)
-        Text(stringResource(R.string.voice_capture_bound), style = MaterialTheme.typography.bodySmall)
-        if (captures.isEmpty()) {
-            Text(stringResource(R.string.voice_capture_empty), style = MaterialTheme.typography.bodySmall)
-        } else {
-            captures.forEach { message ->
-                Text(
-                    stringResource(
-                        R.string.voice_capture_entry,
-                        capturedAt(message.atMillis),
-                        message.topic.ifBlank { stringResource(R.string.voice_capture_no_topic) },
+        // answer to "what is actually reaching this phone", which no other screen can give — and it is the one
+        // thing here that grows while the phone sits there, so it stays folded until the operator asks for it.
+        // The header keeps the count, so a folded list still answers the question in one line.
+        val expandedState = stringResource(R.string.voice_capture_state_expanded)
+        val collapsedState = stringResource(R.string.voice_capture_state_collapsed)
+        Row(
+            // The header is the control: a whole row with a click, not a label with a small target beside it. A
+            // button role and a state description are what a screen reader reads back — "Messages received (3),
+            // collapsed" — instead of leaving the fold to whatever a chevron looks like.
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(role = Role.Button) { captureSection = captureSection.toggled() }
+                .semantics { stateDescription = if (captureSection.expanded) expandedState else collapsedState }
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(
+                    R.string.voice_capture_count,
+                    stringResource(R.string.voice_section_captured),
+                    captureSection.headerCount(captures),
+                ),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
+            )
+            // Decorative on purpose: the header's state description already says which way the list is.
+            Icon(
+                imageVector = if (captureSection.expanded) {
+                    Icons.Filled.KeyboardArrowUp
+                } else {
+                    Icons.Filled.KeyboardArrowDown
+                },
+                contentDescription = null,
+            )
+        }
+        if (captureSection.expanded) {
+            Text(stringResource(R.string.voice_capture_bound), style = MaterialTheme.typography.bodySmall)
+            if (captureSection.showsEmptyLine(captures)) {
+                Text(stringResource(R.string.voice_capture_empty), style = MaterialTheme.typography.bodySmall)
+            } else {
+                captureSection.entries(captures).forEach { message ->
+                    Text(
                         stringResource(
-                            if (message.matched) R.string.voice_capture_matched else R.string.voice_capture_unmatched,
+                            R.string.voice_capture_entry,
+                            capturedAt(message.atMillis),
+                            message.topic.ifBlank { stringResource(R.string.voice_capture_no_topic) },
+                            stringResource(
+                                if (message.matched) R.string.voice_capture_matched else R.string.voice_capture_unmatched,
+                            ),
+                            message.preview,
                         ),
-                        message.preview,
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
 

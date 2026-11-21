@@ -68,6 +68,9 @@ class AndroidVoiceText(context: Context) : VoiceText {
             VoiceKeys.HINT_DEVICES_PERMISSION -> R.string.voice_hint_devices_permission
             VoiceKeys.SPEECH_LAST_NOT_PLAYED -> R.string.voice_speech_last_not_played
             VoiceKeys.SECTION_CAPTURED -> R.string.voice_section_captured
+            VoiceKeys.CAPTURE_COUNT -> R.string.voice_capture_count
+            VoiceKeys.CAPTURE_STATE_EXPANDED -> R.string.voice_capture_state_expanded
+            VoiceKeys.CAPTURE_STATE_COLLAPSED -> R.string.voice_capture_state_collapsed
             VoiceKeys.CAPTURE_BOUND -> R.string.voice_capture_bound
             VoiceKeys.CAPTURE_EMPTY -> R.string.voice_capture_empty
             VoiceKeys.CAPTURE_ENTRY -> R.string.voice_capture_entry

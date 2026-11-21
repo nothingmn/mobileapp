@@ -52,6 +52,11 @@
 
     <!-- What arrived on the reply filter: the inventory, spoken or not. -->
     <string name="voice_section_captured">Messages received</string>
+    <!-- The section's header: its own label, then how many messages are held; the count stays visible while the
+         list is folded. A pure format, so the label itself is written once, above. -->
+    <string name="voice_capture_count">%1$s (%2$d)</string>
+    <string name="voice_capture_state_expanded">Expanded</string>
+    <string name="voice_capture_state_collapsed">Collapsed</string>
     <string name="voice_capture_bound">The last 50 messages on the reply filter, newest first.</string>
     <string name="voice_capture_empty">Nothing has arrived on the reply filter yet.</string>
     <string name="voice_capture_entry">%1$s · %2$s · %3$s · %4$s</string>

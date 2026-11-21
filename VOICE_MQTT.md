@@ -140,7 +140,10 @@ Two things happen now, for **every** message on the filter:
 time it arrived (the phone's own short time format), the topic it arrived on, whether it matched one of our
 outstanding requests, and the first **120 characters** of the payload on one line. The list is in memory only
 and is not persisted: it answers "what is reaching this phone right now", and a file of other people's messages
-is not worth leaving on disk. The bound is the whole reason that is safe.
+is not worth leaving on disk. The bound is the whole reason that is safe. It sits behind its own header on that
+page and stays folded until the header is tapped — folded on every entry to the page, because the fold is
+remembered and never saved — and the header carries the count, so a closed list still answers "did anything
+arrive" in one line and reads *Messages received (0)* when nothing has.
 
 **2. It is classified, in this order.** The first line that holds decides; the list shows the verdict.
 
@@ -516,7 +519,9 @@ words, so a wrong host is diagnosable from the phone, and saving reconnects on t
 - **The captured list** at the bottom is what has actually arrived on the reply filter — the last 50 messages,
   newest first, with their time, topic, whether they answered one of our requests, and their opening words. It is
   recorded whether or not anything was spoken, and it is the only place a message that was neither spoken nor
-  filed is visible at all.
+  filed is visible at all. It is folded behind a *Messages received (n)* header, closed by default: the count is
+  on the header either way, so a closed list still says whether anything arrived, and an opened list holding
+  nothing says so in words rather than showing an empty gap.
 
 ## Library choice, and what it costs elsewhere
 
@@ -606,7 +611,7 @@ that each translation keeps the same format arguments, assert that only this fea
 ./gradlew :voice-mqtt:testAndroidHostTest
 ```
 
-139 tests, no device and no broker needed: the wire contract (five root keys, three frozen literals, UUID v4,
+148 tests, no device and no broker needed: the wire contract (five root keys, three frozen literals, UUID v4,
 1024-character and 8192-byte refusals), the five-minute session reset, the same-requestId retry inside ten
 minutes, reply pairing on `requestId`, and the turn as a whole against a fake transport (a retry carries the same
 requestId, a timeout is spoken, a blank transcript is refused with a sentence, an error reply never speaks its
