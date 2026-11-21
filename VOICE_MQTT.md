@@ -93,7 +93,7 @@ Two independent switches, both on by default and both the user's to change, appl
 out:
 
 - **Speak the replies** — whether replies are spoken at all. Off means the loop never speaks: the reply still
-  arrives, and a later increment still writes it into the note. That silence is the user's own choice.
+  arrives and is still written into the note. That silence is the user's own choice.
 - **Only play through a Bluetooth headset** — whether playback is restricted to Bluetooth. On, a Bluetooth
   audio output must be connected *at the moment of speaking*, checked with
   `AudioManager.getDevices(GET_DEVICES_OUTPUTS)` filtered to `TYPE_BLUETOOTH_A2DP`, `TYPE_BLUETOOTH_SCO` and
@@ -128,6 +128,47 @@ Two further rules:
   queued behind a long recording. So: queued, newest only, dropped at the cap.
 - **Audio focus is `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`**, taken when the utterance starts and given back when
   it finishes, so a reply never fights music or a podcast.
+
+## Reply filed into the note
+
+The answer is spoken *and* kept. Once it has been spoken, the loop appends it into the note that recording
+produced: the capture drain settles a recording as a note before the turn is published, so the loop already
+holds `requestId → note` in memory when that requestId's answer arrives.
+
+What lands in the note is a quote block, one blank line below the note's own text:
+
+```
+> Reply 3:47 PM
+> The garage lights are on.
+```
+
+- **The stamp is the device's own.** The first line carries one word and the local time in the phone's short
+  time format (`DateTimeFormatter.ofLocalizedTime(SHORT)`), never a hardcoded pattern, so it reads the way the
+  phone's clock does. The word lives in one constant (`REPLY_QUOTE_LABEL`) for the localisation pass.
+- **A multi-line answer is one quotation.** Every line of the answer continues as its own `> ` line, and a blank
+  line inside it becomes a bare `>`, so the reader renders the whole answer as the single block it is.
+- **Only the content changes.** The note's title, folder, filename and date are untouched; its modified time
+  moves to the append, which is what puts the note at the top of its folder.
+
+The write is **hash-guarded** (`NoteStore.editNote`, never the blind `updateNote`): the loop reads the note's
+listed hash, appends to the content it read, and writes only if the note still carries that hash. If something
+else rewrote the note in between, it re-reads and retries **once**; if that also loses, the append is dropped
+and recorded rather than guessed at.
+
+Two cases drop the append and leave the note exactly as it was, on purpose:
+
+- **the note is gone** — deleted since the recording settled, or its id no longer resolves in the store;
+- **the note is archived.**
+
+Neither is resurrected: nothing is un-deleted, nothing is moved out of the archive, and no note is created. The
+answer belongs to the note the recording made, or to nowhere. An answer with no words in it is refused before
+the note is even read, so it never leaves a stamp with nothing under it.
+
+**Speaking does not depend on any of this.** The sentence goes to the speaker first and the append is handed
+off afterwards, so an answer is heard whether or not its note still exists or can be written; the append can
+never suppress, delay or undo the speech. Each attempt leaves one entry in the loop's filing history — *filed
+into "Garage"*, or the reason it was not — which the settings screen shows as the last line above the save
+button.
 
 ## Speech output and privacy
 
@@ -223,9 +264,8 @@ harmless: a second answer to an answered requestId is dropped unread.
 ## Notes for the next increment
 
 When a capture settles as a note, the drain hands the turn's `requestId` and that note's id and title to the
-loop, which keeps the association in memory (`VoiceMqttController.rememberNote`). Nothing reads it yet. The
-intended next step — appending the answer into that exact note — is marked `TODO(next increment)` where the
-association is made, and needs no change at the capture drain.
+loop, which keeps the association in memory (`VoiceMqttController.rememberNote`) until that requestId's answer
+is filed into the note and the link is dropped.
 
 Confirmation prompts (the protocol's mid-turn human-in-the-loop) are deliberately **not** implemented; the
 protocol says not to build them into v1.

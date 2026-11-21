@@ -5,6 +5,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import com.anopticlabs.gravel.notebook.pipeline.NoteReplySink
+import com.anopticlabs.gravel.notebook.pipeline.NoteStoreReplyNotes
+import com.anopticlabs.gravel.notebook.pipeline.NoteStoreReplySink
 import com.anopticlabs.gravel.notebook.pipeline.VoiceTurnSink
 import com.anopticlabs.gravel.notebook.sources.PhoneRecorder
 import com.anopticlabs.gravel.notebook.sources.RecorderState
@@ -51,6 +54,9 @@ val voiceMqttModule: Module = module {
             )
         }
         single<VoiceTurnSink> { AndroidVoiceTurnSink(get<VoiceMqttEngine>().controller) }
+        // The answer is filed into the note the recording produced, through the notebook's own store. Bound
+        // only here and only with the flag on, which is what leaves the append out of a build without the loop.
+        single<NoteReplySink> { NoteStoreReplySink(NoteStoreReplyNotes(get())) }
         single<VoiceMqttSettings> { AndroidVoiceMqttSettings(get()) }
         single<TextToSpeechSettings> { AndroidTextToSpeechSettings(get()) }
     }
@@ -87,6 +93,7 @@ private class AndroidVoiceMqttSettings(private val engine: VoiceMqttEngine) : Vo
             onSave = { controller.save(it) },
             onSendTest = { scope.launch { controller.sendTestMessage() } },
             speechRuns = engine.speechRuns.collectAsState().value,
+            replyFiles = engine.replyFiles.collectAsState().value,
         )
     }
 }

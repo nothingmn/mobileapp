@@ -74,6 +74,10 @@ kotlin {
             implementation(compose.foundation)
             implementation(libs.compose.material3)
             implementation(compose.materialIconsExtended)
+            // The notebook's reply seam: this module files an answer into the note the recording produced, and
+            // takes only the notebook's interface, never its storage. The dependency runs one way on purpose —
+            // :notebook must never learn that MQTT exists.
+            implementation(project(":notebook"))
             // Eclipse Paho's MQTT v3 client: plain JVM, Maven Central, no Android Service and no GMS.
             implementation(libs.paho.mqttv3)
         }

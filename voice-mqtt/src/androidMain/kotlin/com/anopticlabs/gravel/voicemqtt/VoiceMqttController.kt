@@ -2,6 +2,9 @@ package com.anopticlabs.gravel.voicemqtt
 
 import android.content.Context
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.notebook.pipeline.NoteReplyResult
+import com.anopticlabs.gravel.notebook.pipeline.NoteReplySink
+import com.anopticlabs.gravel.notebook.pipeline.noteReplySinkOrNull
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionPhase
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionState
 import com.anopticlabs.gravel.voicemqtt.client.PahoVoiceTransport
@@ -12,8 +15,11 @@ import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettingsStore
 import com.anopticlabs.gravel.voicemqtt.speech.AndroidSpeechOutput
 import com.anopticlabs.gravel.voicemqtt.speech.BluetoothAudioGate
+import com.anopticlabs.gravel.voicemqtt.speech.VoiceReplyFileHistory
+import com.anopticlabs.gravel.voicemqtt.speech.VoiceReplyFileRun
 import com.anopticlabs.gravel.voicemqtt.speech.VoiceSpeechHistory
 import com.anopticlabs.gravel.voicemqtt.speech.VoiceSpeechRun
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -42,6 +48,13 @@ class VoiceMqttController(
     speaker: AndroidSpeechOutput,
     private val scope: CoroutineScope,
     private val now: () -> Long = System::currentTimeMillis,
+    /** The record the settings screen reads for "reply filed", or the reason it was not. */
+    val replyFiles: VoiceReplyFileHistory = VoiceReplyFileHistory(now = now),
+    /**
+     * The notebook's reply sink, looked up when an answer arrives: the app binds it only with
+     * `VOICE_MQTT_ENABLED` on, and with the flag off nothing is filed because there is nothing to file into.
+     */
+    private val noteReplySink: () -> NoteReplySink? = ::noteReplySinkOrNull,
 ) {
     val settings: StateFlow<VoiceSettings> = store.settings
     val connection: StateFlow<ConnectionState> = transport.state
@@ -54,13 +67,15 @@ class VoiceMqttController(
         replies = VoiceReplyHandler(now),
         scope = scope,
         now = now,
+        onAnswer = ::fileReply,
     )
 
     private val reconnect = Mutex()
 
     /**
-     * requestId → the note the capture settled as. In memory only, and deliberately not persisted: it exists
-     * so the next increment can append the reply into that exact note.
+     * requestId → the note the capture settled as. In memory only, and deliberately not persisted: it exists so
+     * the answer that comes back can be appended into that exact note, and it is dropped once that has been
+     * tried, because a turn's link is worth nothing after its answer.
      */
     private val noteLinks = mutableMapOf<String, VoiceNoteLink>()
 
@@ -113,15 +128,42 @@ class VoiceMqttController(
         return client.sendTestMessage()
     }
 
-    /** Holds the note a published turn settled as, so a later increment can write the reply into it. */
+    /** Holds the note a published turn settled as, so the answer that comes back can be written into it. */
     fun rememberNote(requestId: String, noteId: String, title: String) {
         noteLinks[requestId] = VoiceNoteLink(requestId, noteId, title)
-        // TODO(next increment): when the final reply for this requestId arrives, append its text to the note
-        //  with this noteId (Notebook NoteStore) instead of only speaking it. The association is carried here
-        //  already so that increment needs no change at the capture drain.
     }
 
     fun noteLink(requestId: String): VoiceNoteLink? = noteLinks[requestId]
+
+    /**
+     * Appends an already-spoken answer into the note its recording produced, off the reply path.
+     *
+     * Called after the sentence has gone to the speaker and never awaited by it: the answer is spoken whether
+     * or not the note still exists, can be written, or is touched by anyone else meanwhile. The outcome — filed,
+     * or the reason it was not — goes into [replyFiles] for the settings screen, and the link is dropped either
+     * way because this turn is over.
+     */
+    private fun fileReply(requestId: String, text: String) {
+        val link = noteLinks[requestId] ?: return
+        scope.launch {
+            val sink = noteReplySink()
+            if (sink == null) {
+                logger.i { "answer for $requestId not filed: no note sink is bound" }
+                noteLinks.remove(requestId)
+                return@launch
+            }
+            val outcome = try {
+                sink.appendReply(link.noteId, text)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                NoteReplyResult.StorageUnavailable
+            }
+            replyFiles.recorded(link.title, outcome)
+            logger.i { "answer for $requestId filed into note ${link.noteId}: $outcome" }
+            noteLinks.remove(requestId)
+        }
+    }
 
     private suspend fun connectIfNeeded(current: VoiceSettings) {
         if (transport.state.value.phase == ConnectionPhase.CONNECTED) return
@@ -157,6 +199,8 @@ class VoiceMqttEngine(
     val gate: BluetoothAudioGate,
     val speech: AndroidSpeechOutput,
     val speechRuns: StateFlow<List<VoiceSpeechRun>>,
+    /** The loop's record of filing answers into notes: filed, or why not, newest first. */
+    val replyFiles: StateFlow<List<VoiceReplyFileRun>>,
 )
 
 fun buildVoiceMqttEngine(
@@ -177,10 +221,12 @@ fun buildVoiceMqttEngine(
         history = speechHistory,
         scope = scope,
     )
+    val controller = VoiceMqttController(store = store, transport = transport, speaker = speaker, scope = scope)
     return VoiceMqttEngine(
-        controller = VoiceMqttController(store = store, transport = transport, speaker = speaker, scope = scope),
+        controller = controller,
         gate = gate,
         speech = speaker,
         speechRuns = speaker.runs,
+        replyFiles = controller.replyFiles.runs,
     )
 }

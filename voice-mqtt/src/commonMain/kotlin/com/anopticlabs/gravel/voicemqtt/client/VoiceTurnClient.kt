@@ -40,6 +40,12 @@ class VoiceTurnClient(
     private val retryDelaysMillis: List<Long> = listOf(1_000L, 2_000L, 4_000L),
     private val busyBackoffMillis: Long = 3_000L,
     private val maxBusyRetries: Int = 2,
+    /**
+     * What the caller does with an answer once it has been spoken: the controller files it into the note the
+     * recording produced. Handed off and never awaited — the answer is already spoken, and nothing about
+     * keeping it may delay or undo that. A failure here never reaches the speaker.
+     */
+    private val onAnswer: (requestId: String, text: String) -> Unit = { _, _ -> },
 ) {
     /** Requests whose answer is still owed, so a `busy` back-off can republish the very same request. */
     private val pending = mutableMapOf<String, VoiceRequest>()
@@ -62,6 +68,8 @@ class VoiceTurnClient(
             is ReplyOutcome.Final -> {
                 forget(outcome.requestId)
                 speaker.speak(outcome.text)
+                // Spoken first, always: keeping the answer is a separate, best-effort step the caller owns.
+                onAnswer(outcome.requestId, outcome.text)
             }
             is ReplyOutcome.Failed -> {
                 forget(outcome.requestId)

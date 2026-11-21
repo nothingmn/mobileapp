@@ -27,6 +27,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.anopticlabs.gravel.notebook.pipeline.NoteReplyResult
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionPhase
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionState
 import com.anopticlabs.gravel.voicemqtt.settings.PreferredDevice
@@ -34,6 +35,7 @@ import com.anopticlabs.gravel.voicemqtt.settings.VoiceField
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
 import com.anopticlabs.gravel.voicemqtt.speech.BluetoothAudioGate
 import com.anopticlabs.gravel.voicemqtt.speech.PlaybackPolicy
+import com.anopticlabs.gravel.voicemqtt.speech.VoiceReplyFileRun
 import com.anopticlabs.gravel.voicemqtt.speech.VoiceSpeechRun
 
 /** The picker's "no device in particular" choice. */
@@ -54,6 +56,7 @@ fun VoiceMqttSettingsContent(
     onSave: (VoiceSettings) -> Unit,
     onSendTest: () -> Unit,
     speechRuns: List<VoiceSpeechRun> = emptyList(),
+    replyFiles: List<VoiceReplyFileRun> = emptyList(),
 ) {
     var draft by remember(settings) { mutableStateOf(settings) }
     var portText by remember(settings) { mutableStateOf(settings.port.toString()) }
@@ -236,6 +239,10 @@ fun VoiceMqttSettingsContent(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+        // And where the last answer went: into the note its recording produced, or why it did not get there.
+        replyFiles.firstOrNull()?.let { run ->
+            Text(filingSentence(run), style = MaterialTheme.typography.bodySmall)
+        }
 
         Button(
             onClick = { onSave(draft) },
@@ -255,6 +262,16 @@ fun VoiceMqttSettingsContent(
 
         lastAction?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     }
+}
+
+/** What became of the last answer: filed into the note its recording produced, or the reason it was not. */
+private fun filingSentence(run: VoiceReplyFileRun): String = when (run.outcome) {
+    NoteReplyResult.Appended -> "Last reply was filed into “${run.title}”."
+    NoteReplyResult.NotListed -> "Last reply was not filed: its note is gone."
+    NoteReplyResult.Archived -> "Last reply was not filed: its note is in the archive."
+    NoteReplyResult.ChangedAfterRetry -> "Last reply was not filed: its note changed twice while it was being filed."
+    NoteReplyResult.EmptyAnswer -> "Last reply was not filed: it had no text to keep."
+    NoteReplyResult.StorageUnavailable -> "Last reply was not filed: the notebook's storage was unavailable."
 }
 
 @Composable
