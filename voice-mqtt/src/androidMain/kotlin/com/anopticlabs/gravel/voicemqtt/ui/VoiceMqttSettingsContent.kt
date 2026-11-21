@@ -80,11 +80,11 @@ fun VoiceMqttSettingsContent(
     onSave: (VoiceSettings) -> Unit,
     onSendTest: () -> Unit,
     /**
-     * Stores a change that only affects what the Notebook does with a recording ("Disable app reminders"), so the
-     * switch takes effect at once and the broker connection is left alone. Defaults to [onSave] for a caller that
-     * has only the one save path.
+     * Stores a change that does not affect the broker connection — the reminders switch and "Keep the assistant
+     * ready in the background" — so it is applied at once and nothing reconnects. Defaults to [onSave] for a
+     * caller that has only the one save path.
      */
-    onSaveCaptureBehaviour: (VoiceSettings) -> Unit = onSave,
+    onSaveSwitch: (VoiceSettings) -> Unit = onSave,
     speechRuns: List<VoiceSpeechRun> = emptyList(),
     replyFiles: List<VoiceReplyFileRun> = emptyList(),
     /** Everything that arrived on the reply filter, newest first. Recorded whatever the switches say. */
@@ -311,6 +311,16 @@ fun VoiceMqttSettingsContent(
                 )
             }
         }
+        // The warm notice's own switch, beside the speaking ones: it is a choice about this feature's
+        // notification, and the subtitle states both halves of the trade — what stays on screen while it is on,
+        // and what can go missing while it is off. Stored the moment it is flipped, so turning it off takes the
+        // notification down without a restart.
+        ToggleRow(
+            title = stringResource(R.string.voice_toggle_keep_ready_title),
+            description = stringResource(R.string.voice_toggle_keep_ready_description),
+            checked = draft.keepReady,
+            onCheckedChange = { onSaveSwitch(draft.copy(keepReady = it)) },
+        )
         // The speaker's own record, so a reply that was held back is a fact on this screen and not a silence.
         speechRuns.firstOrNull()?.suppression?.let { reason ->
             Text(
@@ -333,7 +343,7 @@ fun VoiceMqttSettingsContent(
             title = stringResource(R.string.voice_toggle_disable_app_reminders_title),
             description = stringResource(R.string.voice_toggle_disable_app_reminders_description),
             checked = draft.disableAppReminders,
-            onCheckedChange = { onSaveCaptureBehaviour(draft.copy(disableAppReminders = it)) },
+            onCheckedChange = { onSaveSwitch(draft.copy(disableAppReminders = it)) },
         )
 
         // The inventory: every message the filter delivered, whether it was spoken, filed, or neither. It is the

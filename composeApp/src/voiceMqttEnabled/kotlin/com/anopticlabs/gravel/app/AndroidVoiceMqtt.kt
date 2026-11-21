@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import com.anopticlabs.gravel.notebook.AppVisibility
 import com.anopticlabs.gravel.notebook.pipeline.AppReminderGate
 import com.anopticlabs.gravel.notebook.pipeline.NoteReplySink
 import com.anopticlabs.gravel.notebook.pipeline.NoteStoreReplyNotes
@@ -52,6 +53,9 @@ val voiceMqttModule: Module = module {
                 androidContext(),
                 // The phone is recording: a reply waits rather than bleeding into the microphone.
                 micBusy = { get<PhoneRecorder>().state.value is RecorderState.Recording },
+                // Registered with the Application before any activity runs; a resumed activity is where the
+                // speaking notice's service may be started, and kept warm from.
+                visibility = get<AppVisibility>(),
             )
         }
         single<VoiceTurnSink> { AndroidVoiceTurnSink(get<VoiceMqttEngine>().controller) }
@@ -107,7 +111,7 @@ private class AndroidVoiceMqttSettings(private val engine: VoiceMqttEngine) : Vo
             gate = engine.gate,
             onSave = { controller.save(it) },
             onSendTest = { scope.launch { controller.sendTestMessage() } },
-            onSaveCaptureBehaviour = { controller.saveCaptureBehaviour(it) },
+            onSaveSwitch = { controller.saveWithoutReconnect(it) },
             speechRuns = engine.speechRuns.collectAsState().value,
             replyFiles = engine.replyFiles.collectAsState().value,
             captures = engine.captures.collectAsState().value,

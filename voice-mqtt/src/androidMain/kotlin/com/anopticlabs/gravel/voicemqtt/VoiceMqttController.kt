@@ -2,6 +2,7 @@ package com.anopticlabs.gravel.voicemqtt
 
 import android.content.Context
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.notebook.AppVisibility
 import com.anopticlabs.gravel.notebook.pipeline.NoteReplySink
 import com.anopticlabs.gravel.notebook.pipeline.noteReplySinkOrNull
 import com.anopticlabs.gravel.voicemqtt.capture.VoiceCaptureStore
@@ -16,6 +17,7 @@ import com.anopticlabs.gravel.voicemqtt.session.VoiceReplyHandler
 import com.anopticlabs.gravel.voicemqtt.session.VoiceSessionManager
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettingsStore
+import com.anopticlabs.gravel.voicemqtt.speech.AndroidSpeakingNotice
 import com.anopticlabs.gravel.voicemqtt.speech.AndroidSpeechOutput
 import com.anopticlabs.gravel.voicemqtt.speech.BluetoothAudioGate
 import com.anopticlabs.gravel.voicemqtt.speech.VoiceReplyFileHistory
@@ -58,6 +60,12 @@ class VoiceMqttController(
      * `VOICE_MQTT_ENABLED` on, and with the flag off nothing is filed because there is nothing to file into.
      */
     private val noteReplySink: () -> NoteReplySink? = ::noteReplySinkOrNull,
+    /**
+     * Called for every turn that goes out and every message that comes back: that is what the speaking notice's
+     * warm window is measured from (see [com.anopticlabs.gravel.voicemqtt.speech.SpeakingWarmTracker]), so a
+     * reply that lands minutes after the phone was pocketed still finds the service up.
+     */
+    private val onVoiceActivity: () -> Unit = {},
 ) {
     val settings: StateFlow<VoiceSettings> = store.settings
     val connection: StateFlow<ConnectionState> = transport.state
@@ -98,6 +106,8 @@ class VoiceMqttController(
         transport.setIncoming { topic, payload ->
             // A reply is only ever spoken, never echoed back as the transcript: the client answers with the
             // server's text and nothing else. The topic rides along so the capture list can name it.
+            // Anything arriving refreshes the notice's warm window: a reply means the conversation is live.
+            onVoiceActivity()
             scope.launch { client.onReplyMessage(topic, payload) }
         }
     }
@@ -122,12 +132,11 @@ class VoiceMqttController(
     fun saveSpeaking(next: VoiceSettings): VoiceSettings = store.update { next }
 
     /**
-     * Stores a change that only affects what the Notebook does with a capture — "Disable app reminders". The
-     * connection is left alone for the same reason [saveSpeaking] leaves it alone: the transport never reads it,
-     * and the Notebook reads the stored value the next time it publishes a capture, so the switch takes effect
-     * without pressing Save and without a reconnect.
+     * Stores a change that does not affect the broker connection — "Disable app reminders", "Keep the assistant
+     * ready in the background". The transport never reads either, and the Notebook and the speaking notice read
+     * the stored value on their next decision, so the switch takes effect at once and nothing reconnects.
      */
-    fun saveCaptureBehaviour(next: VoiceSettings): VoiceSettings = store.update { next }
+    fun saveWithoutReconnect(next: VoiceSettings): VoiceSettings = store.update { next }
 
     /** A transcribed turn; the requestId it was published under, or null when it was not sent. */
     suspend fun publishTranscript(text: String): String? {
@@ -137,7 +146,10 @@ class VoiceMqttController(
             return null
         }
         connectIfNeeded(current)
-        return client.publishTranscript(text)
+        val requestId = client.publishTranscript(text)
+        // A turn went out: the answer is what the notice's warm window is counting down to.
+        if (requestId != null) onVoiceActivity()
+        return requestId
     }
 
     /** The settings screen's test button: publish a fixed line and speak whatever comes back. */
@@ -148,7 +160,9 @@ class VoiceMqttController(
             return null
         }
         connectIfNeeded(current)
-        return client.sendTestMessage()
+        val requestId = client.sendTestMessage()
+        if (requestId != null) onVoiceActivity()
+        return requestId
     }
 
     /** Holds the note a published turn settled as, so the answer that comes back can be written into it. */
@@ -200,6 +214,11 @@ class VoiceMqttEngine(
 fun buildVoiceMqttEngine(
     context: Context,
     micBusy: () -> Boolean,
+    /**
+     * The app's own "an activity is resumed" signal. It is what lets the speaking notice's service be started
+     * while the start is permitted, and kept warm afterwards; see [com.anopticlabs.gravel.voicemqtt.speech.SpeakingWarmTracker].
+     */
+    visibility: AppVisibility,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ): VoiceMqttEngine {
     val store = VoiceSettingsStore(context)
@@ -208,6 +227,9 @@ fun buildVoiceMqttEngine(
     val stateFlow = MutableStateFlow(ConnectionState())
     val transport = PahoVoiceTransport(clientId = store.clientId, stateFlow = stateFlow, text = text)
     val speechHistory = VoiceSpeechHistory(now = System::currentTimeMillis)
+    // One notice for the whole app: the ready face while the service is warm, the speaking face while a reply
+    // plays, and the same notification id for both.
+    val notice = AndroidSpeakingNotice(context, visibility, store.settings, scope)
     val speaker = AndroidSpeechOutput(
         context = context,
         settings = { store.settings.value },
@@ -216,6 +238,7 @@ fun buildVoiceMqttEngine(
         history = speechHistory,
         scope = scope,
         text = text,
+        notice = notice,
     )
     val controller = VoiceMqttController(
         store = store,
@@ -223,6 +246,7 @@ fun buildVoiceMqttEngine(
         speaker = speaker,
         scope = scope,
         copy = text,
+        onVoiceActivity = notice::activity,
     )
     return VoiceMqttEngine(
         controller = controller,

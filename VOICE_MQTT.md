@@ -244,57 +244,144 @@ Two further rules:
 
 ## The speaking notification, and its Stop button
 
-While a reply is being spoken the phone shows an ongoing notification that says so, and carries one button:
-**Stop**.
+One ongoing notification carries the feature's foreground state, and it has two faces:
 
-- **What it shows.** A title saying the reply is being spoken, and one line of the reply's own beginning —
-  the first ~80 characters, collapsed to a single line and ellipsised where it was cut. The module's own speaker
-  icon — the voice module borrows no drawable from another module — on a low-importance channel named for
-  speaking, silent, no timestamp, not dismissable while it is up.
+- **Ready.** The app is on screen, or a turn it published is still young enough for an answer: the notification
+  says *Voice assistant ready — replies will appear here* and carries no Stop, because nothing is being spoken.
+- **Speaking.** A reply is playing: the same notification id is re-posted with the reply's own beginning and the
+  Stop button.
+
+Warm and idle is a real state and is stated as one. It is never described as speaking, because the operator will
+photograph a notice that lies.
+
+- **What the speaking face shows.** A title saying the reply is being spoken, and one line of the reply's own
+  beginning — the first ~80 characters, collapsed to a single line and ellipsised where it was cut. The module's
+  own speaker icon — the voice module borrows no drawable from another module — on a low-importance channel named
+  for the assistant, silent, no timestamp, not dismissable while it is up.
 - **When it appears.** When an utterance actually begins — after the switch, the headset check and the voice
   check have all allowed it, and just as the engine is handed the sentence. A reply that is held back (spoken
   replies off, no Bluetooth output with headset only on, no offline voice, no usable voice) never posts it, and
   never starts the service behind it. A reply that arrives while one is being spoken (the engine flushes the
   old line) re-posts the same notification with the newer beginning instead of stacking a second one beside it.
-- **When it disappears.** When the utterance ends, in every sense: the engine saying it finished, the engine
-  reporting an error, the engine being replaced (a change of engine or voice on the settings screen), the
-  process dying, or the user pressing Stop. The removal is the service leaving the foreground with
-  `STOP_FOREGROUND_REMOVE`, so the notification cannot outlive the sound.
+- **When it goes back to ready.** When the utterance ends, in every sense: the engine saying it finished, the
+  engine reporting an error, the engine being replaced (a change of engine or voice on the settings screen), or
+  the user pressing Stop. If the service is still warm the notification returns to the ready face; if the warm
+  window has closed it is removed with `STOP_FOREGROUND_REMOVE`, so it cannot outlive the sound.
 - **What Stop does.** It aborts the utterance being spoken and clears anything queued behind it, gives the
-  audio focus back, and takes the notification down with the service. It is safe to press at any moment,
-  including when nothing is being spoken — that is a no-op. The reply is still filed into its note: stopping the
-  sound does not undo what the answer did.
+  audio focus back, and the notice returns to ready (or goes, if the warmth has ended). It is safe to press at
+  any moment, including when nothing is being spoken — that is a no-op. The reply is still filed into its note:
+  stopping the sound does not undo what the answer did.
+
+**One notification, one channel, and why.** Both faces want the same behaviour: low importance, silent, ongoing,
+no timestamp. Only the words differ, so a second channel would relabel the same silence, and a second
+notification id would put two entries in the shade for one thing. So there is one id, re-posted in place, and one
+channel named *Voice assistant* (previously *Reply speaking*: the channel id is unchanged so an installed app
+keeps the channel and any importance the user set on it). The ready body is a different string from the speaking
+body in both languages — `voice_notice_ready_title`/`voice_notice_ready_body` against
+`voice_speaking_title`/`voice_speaking_body` — because a notification that says "speaking" while nothing plays is
+the false claim this feature exists to avoid.
 
 **Why a foreground service rather than a bare ongoing notification.** A plain ongoing notification is a
 one-way post: nothing takes it down if the process is killed, the engine hangs up, or the speech path throws,
-so the operator would be left with a "speaking" notice for a reply nobody is speaking. A short-lived foreground
-service owns the notification instead, which means the framework itself removes it whenever the service ends —
-including when the app is killed mid-sentence. The service holds no work of its own; the engine does the
-speaking, and the service holds the notice and the Stop action.
+so the operator would be left with a "speaking" notice for a reply nobody is speaking. A foreground service owns
+the notification instead, which means the framework itself removes it whenever the service ends — including when
+the app is killed mid-sentence. The service holds no work of its own; the engine does the speaking, and the
+service holds the notice and the Stop action.
 
 The Stop action is an explicit `PendingIntent` back to that service (an action string, not a broadcast), which
 is what makes it work at any point without the module registering a receiver dynamically; the service then
-calls the speaker's `stop()`, aborts the utterance, clears the queue and removes the notice.
+calls the speaker's `stop()`, aborts the utterance, clears the queue, and leaves the notice to whichever face is
+honest next.
 
 The service is declared `mediaPlayback`, unexported, with `FOREGROUND_SERVICE` and
 `FOREGROUND_SERVICE_MEDIA_PLAYBACK`. That type is the accurate one: this is audio the user asked for, playing
 while the app is not on screen, and there is no work being processed (`mediaProcessing`) or device being talked
 to (`connectedDevice`) behind it. It needs no runtime permission and no `MediaSession` — the notification has a
-Stop and the app has no transport controls to publish. Android 17 requires a running foreground service, not of
-type `shortService`, for an app that touches audio while it is not visible; without one the reply would be
-silently suppressed on that release with the phone in a pocket.
+Stop and the app has no transport controls to publish.
 
-Starting that service is **best effort**, and deliberately so: the reply arrives from the broker asynchronously,
-so the service may be started while the app is in the background, which Android can refuse. A refusal is logged
-and the reply is still spoken; only the notice and its Stop button are missing. The same is true if the user has
-turned notifications off — the speech is unaffected.
+### Keeping the notice available on a pocketed phone
 
-**Nothing of this exists with the flag off.** The service, the notification and the permission that type costs
-live in this module's manifest, and with `VOICE_MQTT_ENABLED` false the module is not in the app's dependency
-graph at all, so none of it reaches the merged manifest: no service entry, no added permission, no channel, and
-no code that could post a notification. That is checked at the artefact level — a flag-off APK's manifest has
-no speaking service and its dex has no `com/anopticlabs/gravel/voicemqtt` reference — not inferred from the
-flag.
+**The defect this answers.** The reply arrives asynchronously over MQTT, so the first version started the service
+at the moment speech began — which is regularly a moment when no activity is visible. Android refuses a
+foreground-service start from the background, so a reply that arrived with the phone in a pocket was spoken with
+**no notice and no Stop button**, and on a release that requires a running foreground service for background
+audio, was at risk of not being heard at all. A refusal was logged and the reply went ahead unannounced. That is
+a reliability hole in the one thing this feature exists to do.
+
+**The fix: start it while the start is permitted, and keep it warm.** The service is started when an activity is
+resumed — the only circumstance in which the platform is guaranteed to allow the start — and the app then hosts
+a foreground service, which is what makes a later start command to the *same* service permitted from the
+background. So the reply's own start is no longer a background start; it is a face change on a service that is
+already running.
+
+**The window, and the reason for the number.** The warmth outlives the screen by **ten minutes measured from the
+last voice activity** — a published turn or a received reply, each of which restarts the clock. Ten minutes is
+`RETRY_WINDOW_MILLIS`, the same constant the client already uses to keep a request eligible for an answer and
+retry under the same `requestId`. Past it the turn is dead, no answer to it can still arrive, and there is
+nothing left to announce, so the window is the protocol's own number rather than one chosen for taste. The three
+rules are:
+
+1. **Warm while an activity is resumed**, whenever the feature is on in settings.
+2. **Warm for one window after the last turn or reply** once the screen is gone. A reply arriving inside it finds
+   the service up and needs no background start at all.
+3. **Never started from the background.** A reply that lands on a cold, pocketed app arms nothing and attempts
+   nothing; a background start is the thing being avoided.
+
+Everything else is an ending, carried out with `stopForeground(STOP_FOREGROUND_REMOVE)`: the window lapsing
+(re-decided against the clock when the timer fires, never trusted), the loop or the speaking switch being turned
+off, "Keep the assistant ready in the background" being turned off, and the app leaving the screen with no turn
+behind it. A lapse that falls mid-utterance is deferred until the utterance ends — tearing down the foreground
+service under playing audio is exactly what the service is there to prevent.
+
+**The switch, so it is the operator's choice and not a hidden constant.** *Settings > Voice Assistant > Speaking
+> **Keep the assistant ready in the background***, **on by default** (reliability is the point), stored with the
+other speaking switches in the same preferences file, so turning it off survives a restart. Its subtitle is the
+trade in one line: *"While this is on, a low-importance notification stays on screen so a reply arriving with
+the phone in your pocket still shows its notice and a working Stop. Off, no warm notification exists and a
+background reply may be spoken without one."* Off is exactly the behaviour before this change, and it is what a
+user who does not want a standing notification should choose. Turning it off stops the service and removes the
+notification immediately; turning it on while the screen is up starts it immediately. Both happen because the
+settings flow is watched, not because anything restarts.
+
+**What the warm state costs, plainly.**
+
+- **A notification, on screen, for up to ten minutes after the app leaves the screen** — low importance, silent,
+  no timestamp, not dismissable while it is up, because it is the foreground-service notification and the
+  service cannot hold the foreground without one.
+- **Nothing else while it is idle.** No wake lock, no CPU, no network, no timer but the one lapse alarm; the
+  service owns the notification and nothing more, and the MQTT connection is the loop's business, not the
+  service's.
+- **The permission is the one already declared** — `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MEDIA_PLAYBACK`,
+  both normal permissions, no runtime prompt and no new prompt: the warm state adds no permission to the app.
+- **Nothing is recorded, sent or read while it is idle.** It holds a notification; it does not touch the
+  microphone, the broker or the notebook.
+- **With notifications switched off for the app, the notice is not drawn.** The permission is declared and asked
+  for by the app already; a user who has since blocked notifications still gets the warm service (the system
+  lists it in its own foreground-task UI instead), so the reply is still permitted and still spoken — but there
+  is no visible Stop on screen. That is a pre-existing property of a notification-driven Stop, not something the
+  warm state introduces.
+- **It ends when the feature does.** With the loop off, spoken replies off, or the switch off, there is no warm
+  service and no notification at all; with the build flag off, none of this code or these strings exist.
+
+**What is still not covered, stated rather than glossed.** A message the phone never asked for — a reminder
+pushed to the reply topic while the app has been closed for longer than the window (or since the last turn) — has
+nothing warming the service, so its notice depends on the same best-effort background start as before. That case
+cannot be fixed by warming on a schedule without keeping a service up indefinitely, which is a battery cost this
+increment does not take. The loop's own turns are the case that is now dependable.
+
+**On Android 17 the sound is at risk too, not only the notice.** That release requires a running foreground
+service, not of type `shortService`, for an app that plays audio while it is not visible. So a refused start did
+not merely cost the notice: the same condition governs whether the utterance is allowed to play at all with the
+screen off. That makes this change a fix for the audio path and not only for the Stop button. It has not been
+demonstrated on the phone in this increment — see the device list below — so it is recorded as the reading of the
+platform rule that the change is designed around, not as something observed here.
+
+**Nothing of this exists with the flag off.** The service, the notification, the strings and the permission that
+type costs live in this module's manifest and resources, and with `VOICE_MQTT_ENABLED` false the module is not in
+the app's dependency graph at all, so none of it reaches the merged manifest: no service entry, no added
+permission, no channel, and no code that could post a notification. That is checked at the artefact level — a
+flag-off APK's manifest has no speaking service and its dex has no `com/anopticlabs/gravel/voicemqtt` reference —
+not inferred from the flag.
 
 ## Reply filed into the note
 
@@ -451,7 +538,8 @@ to `speak`. That hint is not the guarantee: the guarantee is the voice, because 
 still cannot send the text of a voice that needs no connection.
 
 Everything about this lives on **Settings > AI > Text to Speech**, next to Speech Recognition and LLM. The
-Voice Assistant page keeps the broker, the topics and the two speaking switches; it does not hold the engine.
+Voice Assistant page keeps the broker, the topics, the speaking switches and the warm-notice switch; it does not
+hold the engine.
 
 - **Offline speech** (default **on**, the subtitle reads *Local only — voices that never send text to a
   server*): on means only an on-phone voice may speak, and embedded synthesis is requested with every
@@ -516,6 +604,10 @@ words, so a wrong host is diagnosable from the phone, and saving reconnects on t
   is deprecated upstream and would be a new dependency for a dozen lines.)
 - **The test button** publishes a fixed sentence and speaks whatever comes back, which is the whole loop without
   needing to record anything.
+- **Keep the assistant ready in the background** sits at the end of the Speaking section, **on by default**, and
+  takes effect the instant it is flipped: on with the screen up, the warm service starts; off, it stops and its
+  notification goes. It stores without touching the broker connection, so a flip never reconnects. The full
+  policy, the window and what the state costs are in *Keeping the notice available on a pocketed phone* above.
 - **The captured list** at the bottom is what has actually arrived on the reply filter — the last 50 messages,
   newest first, with their time, topic, whether they answered one of our requests, and their opening words. It is
   recorded whether or not anything was spoken, and it is the only place a message that was neither spoken nor
@@ -611,7 +703,7 @@ that each translation keeps the same format arguments, assert that only this fea
 ./gradlew :voice-mqtt:testAndroidHostTest
 ```
 
-148 tests, no device and no broker needed: the wire contract (five root keys, three frozen literals, UUID v4,
+168 tests, no device and no broker needed: the wire contract (five root keys, three frozen literals, UUID v4,
 1024-character and 8192-byte refusals), the five-minute session reset, the same-requestId retry inside ten
 minutes, reply pairing on `requestId`, and the turn as a whole against a fake transport (a retry carries the same
 requestId, a timeout is spoken, a blank transcript is refused with a sentence, an error reply never speaks its
@@ -637,9 +729,41 @@ bakes nothing leaves every field unset, a baked value becomes the first draft, a
 1883 applies only once an address exists, and the topics keep the rules they already had (a wildcard request
 topic is still refused).
 
-The module's own test task is enough; nothing in it needs `adb`. Fifteen of those tests are the speaking
-notification — it appears on the first utterance and never on a suppressed one, a second utterance updates the
-one notice rather than stacking another, and finishing, Stop and an engine failure each end in its removal,
-with Stop when nothing is speaking a no-op — plus the module manifest that declares the service and the
-permission its type costs. Seven of the localisation enforcement tests described above are the remainder of
-that count.
+The module's own test task is enough; nothing in it needs `adb`. Thirty-four of those tests are the speaking
+notice. Thirteen are the speaking face: it appears on the first utterance and never on a suppressed one, a second
+utterance updates the one notice rather than stacking another, and finishing, Stop and an engine failure each
+end in its removal, with Stop when nothing is speaking a no-op. Nineteen are the warm state
+(`SpeakingWarmthTest`), walked one rule at a time: the warmth starts only with the loop on, spoken replies on and
+the switch on and an activity resumed; a warmth is never created from the background; every published turn and
+every received reply pushes the lapse a full window out; a timer that fires early changes nothing and one that
+fires at the deadline ends it; leaving the screen with no turn behind it ends it at once; turning the loop, the
+speaking switch or the warm switch off ends it immediately, even with the window wide open; turning it back on
+while the screen is up starts it again; the ready face yields to the speaking content and comes back when the
+utterance ends; a held-back reply never disturbs the ready face; and the face is exactly one of ready, speaking
+or nothing in all four combinations — which is the "one notification, not two" claim made checkable. The other
+two are the module manifest that declares the service and the permission its type costs. The warm switch's
+storage is proved next to the other speaking switches: a fresh file and a file written before the switch existed
+both read back **on**, and a stored *off* reads back off on a second read, which is what surviving a restart
+means. Seven of the localisation enforcement tests described above are the remainder of that count.
+
+## What still needs the phone
+
+Everything above is host-testable, and everything below is not — it is the platform's behaviour, not this app's
+decisions, and it should be checked on the device before the notice is called dependable:
+
+- **That a resumed activity's start is permitted and that the notification appears** — the ready face on screen
+  with its own wording, low importance, silent and not dismissable.
+- **That the reply no longer needs a background start** — record a turn, pocket the phone, and watch the notice
+  switch to the speaking content with a working Stop, then return to ready when the speech ends. This is the
+  defect the warm service exists to fix, and it is the one thing a host test cannot show.
+- **That the same notification id changes face rather than stacking a second entry** in the shade.
+- **That Stop aborts the utterance, flushes the queue, and leaves the ready face up** rather than removing the
+  notification while the service is still warm.
+- **That the window ends cleanly** — no notification, no foreground service, nothing in the shade ten minutes
+  after the last turn, and nothing at all if the switch is turned off mid-window.
+- **Whether audio is actually allowed to play with the screen off when the service was refused** — the Android 17
+  reading above. With the switch on this should not arise for a turn; with the switch off, and with a push the
+  phone never asked for, it is the case that remains open, and it is worth one deliberate test so the answer is
+  recorded rather than assumed.
+- **The battery line in the phone's own usage screen** for a warm session, so the cost stated above is the cost
+  measured.

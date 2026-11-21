@@ -152,4 +152,27 @@ class VoiceSpeakingSettingsTest {
         assertEquals(null, speaking.ttsEngine)
         assertEquals(null, speaking.preferredVoice)
     }
+
+    /**
+     * "Keep the assistant ready in the background" is on for a file that predates it — the warm service is the
+     * fix, so an upgraded install must get it — and a user who turned it off keeps it off across a restart,
+     * which is exactly what reading the same stored value again proves.
+     */
+    @Test
+    fun theWarmNoticeSwitchIsOnUntilTurnedOffAndTheChoiceSurvivesAFreshRead() {
+        assertTrue(VoiceSpeakingSettings.read(emptyMap()).keepReady, "a fresh file reads back as ON")
+        assertTrue(
+            VoiceSpeakingSettings.read(
+                mapOf(
+                    VoiceSpeakingSettings.KEY_SPEAK_REPLIES to true,
+                    VoiceSpeakingSettings.KEY_OFFLINE_ONLY to true,
+                ),
+            ).keepReady,
+            "a file written before the switch existed reads back as ON too",
+        )
+        // What the store writes when the user turns it off, read again the way a restart reads it.
+        val stored = mapOf(VoiceSpeakingSettings.KEY_KEEP_READY to false)
+        assertFalse(VoiceSpeakingSettings.read(stored).keepReady, "off survives: the store is read, not assumed")
+        assertFalse(VoiceSpeakingSettings.read(stored).keepReady)
+    }
 }

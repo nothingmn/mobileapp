@@ -63,7 +63,11 @@
     <string name="voice_capture_no_topic">aucun sujet enregistré</string>
 
     <!-- La notification persistante pendant la lecture, et le bouton qui arrête la lecture. -->
-    <string name="voice_speaking_channel">Lecture en cours</string>
+    <string name="voice_toggle_keep_ready_title">Garder l\'assistant prêt en arrière-plan</string>
+    <string name="voice_toggle_keep_ready_description">Tant que cette option est activée, une notification de faible importance reste à l\'écran : une réponse qui arrive pendant que le téléphone est dans votre poche affiche donc son avis et un bouton Arrêter qui fonctionne. Désactivée, aucune notification d\'attente n\'existe et une réponse reçue en arrière-plan peut être lue sans avis.</string>
+    <string name="voice_notice_channel">Assistant vocal</string>
+    <string name="voice_notice_ready_title">Assistant vocal prêt</string>
+    <string name="voice_notice_ready_body">Les réponses apparaîtront ici.</string>
     <string name="voice_speaking_title">Lecture de la réponse</string>
     <string name="voice_speaking_body">« %1$s »</string>
     <string name="voice_speaking_stop">Arrêter</string>

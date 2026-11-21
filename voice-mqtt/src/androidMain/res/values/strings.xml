@@ -65,7 +65,11 @@
     <string name="voice_capture_no_topic">no topic recorded</string>
 
     <!-- The ongoing notification while a reply is being spoken, and the button that stops it. -->
-    <string name="voice_speaking_channel">Reply speaking</string>
+    <string name="voice_toggle_keep_ready_title">Keep the assistant ready in the background</string>
+    <string name="voice_toggle_keep_ready_description">While this is on, a low-importance notification stays on screen so a reply arriving with the phone in your pocket still shows its notice and a working Stop. Off, no warm notification exists and a background reply may be spoken without one.</string>
+    <string name="voice_notice_channel">Voice assistant</string>
+    <string name="voice_notice_ready_title">Voice assistant ready</string>
+    <string name="voice_notice_ready_body">Replies will appear here.</string>
     <string name="voice_speaking_title">Speaking the reply</string>
     <string name="voice_speaking_body">“%1$s”</string>
     <string name="voice_speaking_stop">Stop</string>

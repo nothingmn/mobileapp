@@ -21,6 +21,9 @@ import java.util.UUID
  * here forces a value.
  * [VoiceSettings.disableAppReminders] is stored the same way and is off until the user turns it on, so a phone
  * that has never touched it keeps the behaviour it had before the switch existed.
+ * [VoiceSettings.keepReady] is stored like the other speaking switches and is **on** until the user turns it off:
+ * the warm speaking-notice service is what makes a reply's notice dependable on a pocketed phone, so an
+ * upgraded install gets the fix, and turning it off is the user's own choice and survives a restart.
  *
  * The connection fields — address, port, TLS, both topics — are read through [VoiceConnectionDefaults], so a
  * value the user saved wins over a value [baked] into the build, and a build that baked in nothing leaves them
@@ -88,6 +91,7 @@ class VoiceSettingsStore(
             ttsEngine = speaking.ttsEngine,
             preferredVoice = speaking.preferredVoice,
             offlineOnly = speaking.offlineOnly,
+            keepReady = speaking.keepReady,
             disableAppReminders = prefs.getBoolean(KEY_DISABLE_APP_REMINDERS, false),
         )
     }
@@ -122,6 +126,7 @@ class VoiceSettingsStore(
         editor.putStringOrRemove(VoiceSpeakingSettings.KEY_TTS_ENGINE, next.ttsEngine)
             .putStringOrRemove(VoiceSpeakingSettings.KEY_PREFERRED_VOICE, next.preferredVoice)
             .putBoolean(VoiceSpeakingSettings.KEY_OFFLINE_ONLY, next.offlineOnly)
+            .putBoolean(VoiceSpeakingSettings.KEY_KEEP_READY, next.keepReady)
             .putBoolean(KEY_DISABLE_APP_REMINDERS, next.disableAppReminders)
         // The first increment's keys are migrated on read and gone after the first save, so a value it wrote
         // can never come back over a choice the user has since changed.

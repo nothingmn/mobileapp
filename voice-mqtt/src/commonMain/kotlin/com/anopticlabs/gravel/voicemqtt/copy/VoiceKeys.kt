@@ -43,6 +43,9 @@ object VoiceKeys {
     const val TOGGLE_SPEAK_UNSOLICITED_DESCRIPTION = "voice_toggle_speak_unsolicited_description"
     const val TOGGLE_HEADSET_ONLY_TITLE = "voice_toggle_headset_only_title"
     const val TOGGLE_HEADSET_ONLY_DESCRIPTION = "voice_toggle_headset_only_description"
+    // "Keep the assistant ready in the background": the warm notice's own switch, beside the speaking ones.
+    const val TOGGLE_KEEP_READY_TITLE = "voice_toggle_keep_ready_title"
+    const val TOGGLE_KEEP_READY_DESCRIPTION = "voice_toggle_keep_ready_description"
     const val PICKER_DEVICE_LINE = "voice_picker_device_line"
     const val PICKER_ANY_DEVICE = "voice_picker_any_device"
     const val HINT_DEVICE_HEADSET_ONLY = "voice_hint_device_headset_only"
@@ -64,7 +67,9 @@ object VoiceKeys {
     const val SECTION_RECORDINGS = "voice_section_recordings"
     const val TOGGLE_DISABLE_APP_REMINDERS_TITLE = "voice_toggle_disable_app_reminders_title"
     const val TOGGLE_DISABLE_APP_REMINDERS_DESCRIPTION = "voice_toggle_disable_app_reminders_description"
-    const val SPEAKING_CHANNEL = "voice_speaking_channel"
+    const val NOTICE_CHANNEL = "voice_notice_channel"
+    const val NOTICE_READY_TITLE = "voice_notice_ready_title"
+    const val NOTICE_READY_BODY = "voice_notice_ready_body"
     const val SPEAKING_TITLE = "voice_speaking_title"
     const val SPEAKING_BODY = "voice_speaking_body"
     const val SPEAKING_STOP = "voice_speaking_stop"
@@ -178,6 +183,8 @@ object VoiceKeys {
         CAPTURE_NO_TOPIC,
         TOGGLE_HEADSET_ONLY_TITLE,
         TOGGLE_HEADSET_ONLY_DESCRIPTION,
+        TOGGLE_KEEP_READY_TITLE,
+        TOGGLE_KEEP_READY_DESCRIPTION,
         PICKER_DEVICE_LINE,
         PICKER_ANY_DEVICE,
         HINT_DEVICE_HEADSET_ONLY,
@@ -186,7 +193,9 @@ object VoiceKeys {
         SECTION_RECORDINGS,
         TOGGLE_DISABLE_APP_REMINDERS_TITLE,
         TOGGLE_DISABLE_APP_REMINDERS_DESCRIPTION,
-        SPEAKING_CHANNEL,
+        NOTICE_CHANNEL,
+        NOTICE_READY_TITLE,
+        NOTICE_READY_BODY,
         SPEAKING_TITLE,
         SPEAKING_BODY,
         SPEAKING_STOP,

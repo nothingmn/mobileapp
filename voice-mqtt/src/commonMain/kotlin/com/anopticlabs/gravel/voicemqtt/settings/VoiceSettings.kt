@@ -73,6 +73,18 @@ data class VoiceSettings(
      */
     val offlineOnly: Boolean = true,
     /**
+     * "Keep the assistant ready in the background", default **on**: while the voice feature is on, the app holds
+     * its speaking-notice foreground service for as long as an activity is visible and for one window after the
+     * last turn or reply, so a reply that arrives on a pocketed phone can still show its notice and a working
+     * Stop. Its cost is stated on the screen: a low-importance notification stays on screen for that time.
+     * Off, no warm notification exists at all and a background reply may be spoken without one — the behaviour
+     * before this switch, and the reason it defaults on.
+     *
+     * Read together with [enabled] and [speakReplies]: a notice for a loop that is off, or that never speaks,
+     * would be a notification about nothing.
+     */
+    val keepReady: Boolean = true,
+    /**
      * "Disable app reminders", default off: on, a recording that would have become a reminder is kept as a note
      * instead — its words intact, nothing scheduled — so a reminder system run elsewhere sees no duplicates.
      * This is the voice loop's one switch that changes what the Notebook does with a capture, and it is read by
@@ -111,6 +123,6 @@ data class VoiceSettings(
             "ingress=$ingressTopic, egress=$egressTopic, speakReplies=$speakReplies, " +
             "speakUnsolicited=$speakUnsolicited, headsetOnly=$headsetOnly, " +
             "headset=${preferredDevice?.name ?: "any"}, engine=${ttsEngine ?: "system default"}, " +
-            "voice=${preferredVoice ?: "automatic"}, offlineOnly=$offlineOnly, " +
+            "voice=${preferredVoice ?: "automatic"}, offlineOnly=$offlineOnly, keepReady=$keepReady, " +
             "disableAppReminders=$disableAppReminders)"
 }

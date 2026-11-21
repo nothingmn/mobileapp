@@ -32,6 +32,12 @@ object VoiceSpeakingSettings {
      */
     const val KEY_SPEAK_UNSOLICITED = "speakUnsolicited"
 
+    /**
+     * "Keep the assistant ready in the background". A file written before the switch existed reads back as ON:
+     * reliability is the point of the switch, so an upgraded install gets the fix rather than the defect.
+     */
+    const val KEY_KEEP_READY = "keepReady"
+
     /** The first increment's keys: its headset choice and the switch it never wrote. */
     const val LEGACY_KEY_SPEAK_ONLY_WITH_HEADSET = "speakOnlyWithHeadset"
     const val LEGACY_KEY_HEADSET_ADDRESS = "headsetAddress"
@@ -46,6 +52,7 @@ object VoiceSpeakingSettings {
         val ttsEngine: String? = null,
         val preferredVoice: String? = null,
         val offlineOnly: Boolean = true,
+        val keepReady: Boolean = true,
     )
 
     fun read(stored: Map<String, Any?>): Speaking = Speaking(
@@ -61,6 +68,9 @@ object VoiceSpeakingSettings {
         preferredVoice = (stored[KEY_PREFERRED_VOICE] as? String)?.takeIf { it.isNotBlank() },
         // A file written before the switch existed reads back as ON: the stricter choice, not a looser default.
         offlineOnly = stored[KEY_OFFLINE_ONLY] as? Boolean ?: true,
+        // And so does this one, for the opposite reason: the warm service is what makes the notice dependable, so
+        // an upgraded install gets it rather than the defect it fixes.
+        keepReady = stored[KEY_KEEP_READY] as? Boolean ?: true,
     )
 
     private fun preferred(stored: Map<String, Any?>): PreferredDevice? {

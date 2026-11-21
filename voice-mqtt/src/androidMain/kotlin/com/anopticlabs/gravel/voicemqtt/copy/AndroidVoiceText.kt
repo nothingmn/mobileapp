@@ -62,6 +62,8 @@ class AndroidVoiceText(context: Context) : VoiceText {
             VoiceKeys.TOGGLE_SPEAK_UNSOLICITED_DESCRIPTION -> R.string.voice_toggle_speak_unsolicited_description
             VoiceKeys.TOGGLE_HEADSET_ONLY_TITLE -> R.string.voice_toggle_headset_only_title
             VoiceKeys.TOGGLE_HEADSET_ONLY_DESCRIPTION -> R.string.voice_toggle_headset_only_description
+            VoiceKeys.TOGGLE_KEEP_READY_TITLE -> R.string.voice_toggle_keep_ready_title
+            VoiceKeys.TOGGLE_KEEP_READY_DESCRIPTION -> R.string.voice_toggle_keep_ready_description
             VoiceKeys.PICKER_DEVICE_LINE -> R.string.voice_picker_device_line
             VoiceKeys.PICKER_ANY_DEVICE -> R.string.voice_picker_any_device
             VoiceKeys.HINT_DEVICE_HEADSET_ONLY -> R.string.voice_hint_device_headset_only
@@ -80,7 +82,9 @@ class AndroidVoiceText(context: Context) : VoiceText {
             VoiceKeys.SECTION_RECORDINGS -> R.string.voice_section_recordings
             VoiceKeys.TOGGLE_DISABLE_APP_REMINDERS_TITLE -> R.string.voice_toggle_disable_app_reminders_title
             VoiceKeys.TOGGLE_DISABLE_APP_REMINDERS_DESCRIPTION -> R.string.voice_toggle_disable_app_reminders_description
-            VoiceKeys.SPEAKING_CHANNEL -> R.string.voice_speaking_channel
+            VoiceKeys.NOTICE_CHANNEL -> R.string.voice_notice_channel
+            VoiceKeys.NOTICE_READY_TITLE -> R.string.voice_notice_ready_title
+            VoiceKeys.NOTICE_READY_BODY -> R.string.voice_notice_ready_body
             VoiceKeys.SPEAKING_TITLE -> R.string.voice_speaking_title
             VoiceKeys.SPEAKING_BODY -> R.string.voice_speaking_body
             VoiceKeys.SPEAKING_STOP -> R.string.voice_speaking_stop

@@ -102,8 +102,11 @@ class AndroidSpeechOutput(
      * The ongoing notification that says a reply is being spoken, and its Stop action. It is told only about
      * utterances that actually begin, so a reply held back by a switch, a missing headset or a missing voice
      * never puts a notice on screen.
+     *
+     * Built by `buildVoiceMqttEngine` rather than defaulted here: the notice also holds the warm foreground
+     * state, which needs the app's own visibility signal and the settings, and neither belongs to the speaker.
      */
-    private val notice: AndroidSpeakingNotice = AndroidSpeakingNotice(context, text),
+    private val notice: AndroidSpeakingNotice,
 ) : SpeechOutput {
 
     private val appContext = context.applicationContext
@@ -148,11 +151,13 @@ class AndroidSpeechOutput(
     }
 
     /**
-     * Aborts the utterance being spoken and clears anything queued behind it, then takes the notice down.
+     * Aborts the utterance being spoken and clears anything queued behind it, then hands the notice back to
+     * whatever it should be now — the ready face while the service is still warm, nothing at all once the warmth
+     * has lapsed.
      *
      * Safe at any point and safe when nothing is speaking: the engine call is guarded, there is no queue to
      * clear beyond the engine's own (the channel holds at most one waiting line, and the generation bump is
-     * what drops it), and removing a notice that was never posted does nothing.
+     * what drops it), and ending a speaking face that was never posted does nothing.
      */
     fun stop() {
         synchronized(lock) { playbackGeneration += 1 }
