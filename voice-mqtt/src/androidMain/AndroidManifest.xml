@@ -5,4 +5,21 @@
          spoken at all; the app already asks for it for the watch connection. -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
+    <!-- The speaking notice is a mediaPlayback foreground service: audio the user asked for, playing while the
+         app is not on screen. The base permission is the app's already; the type-specific one is this module's,
+         so it exists only in a build that includes this module. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <application>
+        <!--
+            Holds the notification that says a reply is being spoken, for as long as it is being spoken, and
+            carries its Stop action. Started and stopped only by this app, so unexported.
+        -->
+        <service
+            android:name="com.anopticlabs.gravel.voicemqtt.speech.SpeakingNoticeService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+    </application>
+
 </manifest>

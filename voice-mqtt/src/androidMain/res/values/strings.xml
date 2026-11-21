@@ -41,6 +41,13 @@
     <string name="voice_hint_device_headset_only">Only used when replies are restricted to Bluetooth.</string>
     <string name="voice_hint_devices_permission">Allow the Nearby devices permission to choose one paired headset.</string>
     <string name="voice_speech_last_not_played">Last reply was not played: %1$s</string>
+
+    <!-- The ongoing notification while a reply is being spoken, and the button that stops it. -->
+    <string name="voice_speaking_channel">Reply speaking</string>
+    <string name="voice_speaking_title">Speaking the reply</string>
+    <string name="voice_speaking_body">“%1$s”</string>
+    <string name="voice_speaking_stop">Stop</string>
+
     <string name="voice_button_save_and_reconnect">Save and reconnect</string>
     <string name="voice_action_test_sent">Test message sent; the answer is spoken when it arrives.</string>
     <string name="voice_button_send_test">Send test message</string>

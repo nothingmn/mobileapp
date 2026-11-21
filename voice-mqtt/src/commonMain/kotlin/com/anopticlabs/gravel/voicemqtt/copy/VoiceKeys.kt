@@ -45,6 +45,10 @@ object VoiceKeys {
     const val HINT_DEVICE_HEADSET_ONLY = "voice_hint_device_headset_only"
     const val HINT_DEVICES_PERMISSION = "voice_hint_devices_permission"
     const val SPEECH_LAST_NOT_PLAYED = "voice_speech_last_not_played"
+    const val SPEAKING_CHANNEL = "voice_speaking_channel"
+    const val SPEAKING_TITLE = "voice_speaking_title"
+    const val SPEAKING_BODY = "voice_speaking_body"
+    const val SPEAKING_STOP = "voice_speaking_stop"
     const val BUTTON_SAVE_AND_RECONNECT = "voice_button_save_and_reconnect"
     const val ACTION_TEST_SENT = "voice_action_test_sent"
     const val BUTTON_SEND_TEST = "voice_button_send_test"
@@ -143,6 +147,10 @@ object VoiceKeys {
         HINT_DEVICE_HEADSET_ONLY,
         HINT_DEVICES_PERMISSION,
         SPEECH_LAST_NOT_PLAYED,
+        SPEAKING_CHANNEL,
+        SPEAKING_TITLE,
+        SPEAKING_BODY,
+        SPEAKING_STOP,
         BUTTON_SAVE_AND_RECONNECT,
         ACTION_TEST_SENT,
         BUTTON_SEND_TEST,

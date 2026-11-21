@@ -98,6 +98,12 @@ class AndroidSpeechOutput(
     private val scope: CoroutineScope,
     /** The feature's own copy, so the sentences below follow the phone's language. */
     private val text: VoiceText = AndroidVoiceText(context),
+    /**
+     * The ongoing notification that says a reply is being spoken, and its Stop action. It is told only about
+     * utterances that actually begin, so a reply held back by a switch, a missing headset or a missing voice
+     * never puts a notice on screen.
+     */
+    private val notice: AndroidSpeakingNotice = AndroidSpeakingNotice(context, text),
 ) : SpeechOutput {
 
     private val appContext = context.applicationContext
@@ -117,6 +123,10 @@ class AndroidSpeechOutput(
     /** The real platform voices, by name, so the chosen [OfferedVoice] can be handed back to `setVoice`. */
     private var realVoices: Map<String, Voice> = emptyMap()
     private var focusRequest: AudioFocusRequest? = null
+    /** The utterance the engine is speaking now, so a late callback from a replaced one changes nothing. */
+    @Volatile private var currentUtterance: String? = null
+    /** Bumped by [stop], so a line waiting for the microphone or the engine is dropped instead of played. */
+    @Volatile private var playbackGeneration = 0
 
     /** The engines the user may choose between, and what the chosen one offers. */
     val speechState: StateFlow<SpeechEngineState> = _speechState.asStateFlow()
@@ -124,6 +134,9 @@ class AndroidSpeechOutput(
     init {
         // The stored engine is used at construction, before any reply arrives.
         applyCurrentSettings()
+        // The Stop action reaches the speaker through this: the notification is what the user taps, and the
+        // service it starts has no other route to the engine.
+        SpeakingStop.bind(::stop)
         scope.launch {
             for (line in lines) speakWhenPossible(line)
         }
@@ -132,6 +145,22 @@ class AndroidSpeechOutput(
     /** Never blocks the turn: the sentence is handed to the speaker and played when the rules allow it. */
     override suspend fun speak(text: String) {
         lines.trySend(text)
+    }
+
+    /**
+     * Aborts the utterance being spoken and clears anything queued behind it, then takes the notice down.
+     *
+     * Safe at any point and safe when nothing is speaking: the engine call is guarded, there is no queue to
+     * clear beyond the engine's own (the channel holds at most one waiting line, and the generation bump is
+     * what drops it), and removing a notice that was never posted does nothing.
+     */
+    fun stop() {
+        synchronized(lock) { playbackGeneration += 1 }
+        currentUtterance = null
+        runCatching { engine?.stop() }
+        abandonFocus()
+        notice.end()
+        logger.i { "reply stopped by the user" }
     }
 
     /** What the loop did with each sentence, newest first; the settings screen reads the head of it. */
@@ -166,6 +195,10 @@ class AndroidSpeechOutput(
         engineReady = false
         choice = VoiceChoice.Refused(VoiceRefusal.NO_VOICES_OFFERED)
         realVoices = emptyMap()
+        // An engine replaced mid-sentence takes the utterance with it and reports nothing, so the notice it was
+        // holding comes down here rather than waiting for a callback that will not come.
+        currentUtterance = null
+        notice.end()
         runCatching { engine?.shutdown() }
         engine = null
 
@@ -206,12 +239,17 @@ class AndroidSpeechOutput(
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) = Unit
 
-                override fun onDone(utteranceId: String?) = abandonFocus()
+                // Every way an utterance can end — finished, stopped, or failed — removes the notice. A callback
+                // for an utterance that is no longer the current one (a flushed line overtaken by a newer reply,
+                // or one aborted by Stop) is ignored, so the notice follows the sound and not the callback order.
+                override fun onDone(utteranceId: String?) = utteranceEnded(utteranceId)
+
+                override fun onStop(utteranceId: String?, interrupted: Boolean) = utteranceEnded(utteranceId)
 
                 @Deprecated("The platform's abstract signature")
-                override fun onError(utteranceId: String?) = abandonFocus()
+                override fun onError(utteranceId: String?) = utteranceEnded(utteranceId)
 
-                override fun onError(utteranceId: String?, errorCode: Int) = abandonFocus()
+                override fun onError(utteranceId: String?, errorCode: Int) = utteranceEnded(utteranceId)
             })
 
             val voices = runCatching { tts.voices.orEmpty() }.getOrElse { e ->
@@ -311,6 +349,9 @@ class AndroidSpeechOutput(
     }
 
     private suspend fun speakWhenPossible(line: String) {
+        // A Stop aborts the line that was still waiting, so the generation this line was queued under is what
+        // every later step checks: a bumped generation means the user has already said no.
+        val generation = playbackGeneration
         // The decision is asked twice: now, so a hopeless line is dropped before any waiting, and again right
         // before playback, because a headset can disconnect while a line is queued.
         when (val decision = gate.decision(settings())) {
@@ -324,18 +365,21 @@ class AndroidSpeechOutput(
         while (micBusy() && waited < MIC_WAIT_MILLIS) {
             delay(MIC_POLL_MILLIS)
             waited += MIC_POLL_MILLIS
+            if (playbackGeneration != generation) return droppedByStop()
         }
         if (micBusy()) {
             logger.i { "reply dropped: the microphone is still recording" }
             return
         }
-        when (val decision = gate.decision(settings())) {
+        val allowed = gate.decision(settings())
+        when (allowed) {
             PlaybackDecision.Speak -> Unit
             is PlaybackDecision.Silent -> {
-                suppress(decision.reason)
+                suppress(allowed.reason)
                 return
             }
         }
+        if (playbackGeneration != generation) return droppedByStop()
         // The engine picker's change reaches the speaker here even if the screen did not reload it.
         applyCurrentSettings()
         val usable = withTimeoutOrNull(INIT_TIMEOUT_MILLIS) {
@@ -354,6 +398,7 @@ class AndroidSpeechOutput(
             history.suppressed(suppressionFor(reason))
             return
         }
+        if (playbackGeneration != generation) return droppedByStop()
         requestFocus()
         val utteranceId = "gravel-voice-${counter.incrementAndGet()}"
         val params = Bundle().apply {
@@ -366,15 +411,34 @@ class AndroidSpeechOutput(
                 putString(TextToSpeech.Engine.KEY_FEATURE_NETWORK_SYNTHESIS, "false")
             }
         }
+        currentUtterance = utteranceId
+        // The notice goes up as the utterance begins, and every ending below — the engine refusing it included —
+        // takes it down again, so no path leaves a "speaking" notice behind.
+        notice.begin(allowed, line)
         val accepted = runCatching { engine?.speak(line, TextToSpeech.QUEUE_FLUSH, params, utteranceId) }
             .getOrNull() ?: TextToSpeech.ERROR
         if (accepted != TextToSpeech.SUCCESS) {
+            currentUtterance = null
+            notice.end()
             abandonFocus()
             logger.i { "reply not spoken: the engine would not use its voice" }
             history.suppressed(SpeechSuppression.NO_USABLE_VOICE)
             return
         }
         history.spoken()
+    }
+
+    /** One utterance reached an ending of some kind: give the focus back and take the notice down. */
+    private fun utteranceEnded(utteranceId: String?) {
+        if (utteranceId != null && utteranceId != currentUtterance) return
+        currentUtterance = null
+        abandonFocus()
+        notice.end()
+    }
+
+    /** A line that was waiting when the user stopped the reply is dropped, not played into the gap. */
+    private fun droppedByStop() {
+        logger.i { "queued reply dropped: speech was stopped" }
     }
 
     /** A held-back sentence: one log line and one run-history entry, never an error to say aloud. */

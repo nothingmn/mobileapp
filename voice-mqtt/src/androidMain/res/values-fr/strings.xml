@@ -41,6 +41,12 @@
     <string name="voice_hint_device_headset_only">Utilisé seulement quand la lecture est limitée au Bluetooth.</string>
     <string name="voice_hint_devices_permission">Accordez l\'autorisation Appareils à proximité pour choisir un casque jumelé.</string>
     <string name="voice_speech_last_not_played">La dernière réponse n\'a pas été lue : %1$s</string>
+
+    <!-- La notification persistante pendant la lecture, et le bouton qui arrête la lecture. -->
+    <string name="voice_speaking_channel">Lecture en cours</string>
+    <string name="voice_speaking_title">Lecture de la réponse</string>
+    <string name="voice_speaking_body">« %1$s »</string>
+    <string name="voice_speaking_stop">Arrêter</string>
     <string name="voice_button_save_and_reconnect">Enregistrer et se reconnecter</string>
     <string name="voice_action_test_sent">Message de test envoyé ; la réponse sera lue à son arrivée.</string>
     <string name="voice_button_send_test">Envoyer un message de test</string>

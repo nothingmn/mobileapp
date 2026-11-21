@@ -129,6 +129,59 @@ Two further rules:
 - **Audio focus is `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`**, taken when the utterance starts and given back when
   it finishes, so a reply never fights music or a podcast.
 
+## The speaking notification, and its Stop button
+
+While a reply is being spoken the phone shows an ongoing notification that says so, and carries one button:
+**Stop**.
+
+- **What it shows.** A title saying the reply is being spoken, and one line of the reply's own beginning —
+  the first ~80 characters, collapsed to a single line and ellipsised where it was cut. The app's notification
+  icon, on a low-importance channel named for speaking, silent, no timestamp, not dismissable while it is up.
+- **When it appears.** When an utterance actually begins — after the switch, the headset check and the voice
+  check have all allowed it, and just as the engine is handed the sentence. A reply that is held back (spoken
+  replies off, no Bluetooth output with headset only on, no offline voice, no usable voice) never posts it, and
+  never starts the service behind it. A reply that arrives while one is being spoken (the engine flushes the
+  old line) re-posts the same notification with the newer beginning instead of stacking a second one beside it.
+- **When it disappears.** When the utterance ends, in every sense: the engine saying it finished, the engine
+  reporting an error, the engine being replaced (a change of engine or voice on the settings screen), the
+  process dying, or the user pressing Stop. The removal is the service leaving the foreground with
+  `STOP_FOREGROUND_REMOVE`, so the notification cannot outlive the sound.
+- **What Stop does.** It aborts the utterance being spoken and clears anything queued behind it, gives the
+  audio focus back, and takes the notification down with the service. It is safe to press at any moment,
+  including when nothing is being spoken — that is a no-op. The reply is still filed into its note: stopping the
+  sound does not undo what the answer did.
+
+**Why a foreground service rather than a bare ongoing notification.** A plain ongoing notification is a
+one-way post: nothing takes it down if the process is killed, the engine hangs up, or the speech path throws,
+so the operator would be left with a "speaking" notice for a reply nobody is speaking. A short-lived foreground
+service owns the notification instead, which means the framework itself removes it whenever the service ends —
+including when the app is killed mid-sentence. The service holds no work of its own; the engine does the
+speaking, and the service holds the notice and the Stop action.
+
+The Stop action is an explicit `PendingIntent` back to that service (an action string, not a broadcast), which
+is what makes it work at any point without the module registering a receiver dynamically; the service then
+calls the speaker's `stop()`, aborts the utterance, clears the queue and removes the notice.
+
+The service is declared `mediaPlayback`, unexported, with `FOREGROUND_SERVICE` and
+`FOREGROUND_SERVICE_MEDIA_PLAYBACK`. That type is the accurate one: this is audio the user asked for, playing
+while the app is not on screen, and there is no work being processed (`mediaProcessing`) or device being talked
+to (`connectedDevice`) behind it. It needs no runtime permission and no `MediaSession` — the notification has a
+Stop and the app has no transport controls to publish. Android 17 requires a running foreground service, not of
+type `shortService`, for an app that touches audio while it is not visible; without one the reply would be
+silently suppressed on that release with the phone in a pocket.
+
+Starting that service is **best effort**, and deliberately so: the reply arrives from the broker asynchronously,
+so the service may be started while the app is in the background, which Android can refuse. A refusal is logged
+and the reply is still spoken; only the notice and its Stop button are missing. The same is true if the user has
+turned notifications off — the speech is unaffected.
+
+**Nothing of this exists with the flag off.** The service, the notification and the permission that type costs
+live in this module's manifest, and with `VOICE_MQTT_ENABLED` false the module is not in the app's dependency
+graph at all, so none of it reaches the merged manifest: no service entry, no added permission, no channel, and
+no code that could post a notification. That is checked at the artefact level — a flag-off APK's manifest has
+no speaking service and its dex has no `com/anopticlabs/gravel/voicemqtt` reference — not inferred from the
+flag.
+
 ## Reply filed into the note
 
 The answer is spoken *and* kept. Once it has been spoken, the loop appends it into the note that recording
@@ -292,7 +345,7 @@ kind of module, and the tests hold both to the same rules.
   screen, and the AI section's item is resolved in `rememberSettingsItemsState` because the item list is built
   inside a `remember`.
 
-**Locales shipped:** English (`values/`) and French (`values-fr/`), 83 keys in the voice module and 21 in the
+**Locales shipped:** English (`values/`) and French (`values-fr/`), 87 keys in the voice module and 21 in the
 Text to Speech screen, every one prefixed `voice_` so the feature's copy reads as one block in a review.
 French is standard French with Canadian vocabulary where the word genuinely differs — *jumelé* for a paired
 headset, *infonuagique* for a cloud service, *téléphone* throughout — and keeps the technical terms French has
@@ -330,7 +383,7 @@ that each translation keeps the same format arguments, assert that only this fea
 ./gradlew :voice-mqtt:testAndroidHostTest
 ```
 
-73 tests, no device and no broker needed: the wire contract (five root keys, three frozen literals, UUID v4,
+89 tests, no device and no broker needed: the wire contract (five root keys, three frozen literals, UUID v4,
 1024-character and 8192-byte refusals), the five-minute session reset, the same-requestId retry inside ten
 minutes, reply pairing on `requestId` (a mismatched or empty one is ignored), and the turn as a whole against a
 fake transport (a retry carries the same requestId, a timeout is spoken, a blank transcript is refused with a
@@ -340,5 +393,9 @@ rule: a network-only engine is refused, one on-phone voice among network ones is
 on-phone voice gives the named reason, a pinned network voice is refused while offline speech is on, and a
 preferences file from the previous increment keeps both switches and its headset and reads back offline-only.
 
-The module's own test task is enough; nothing in it needs `adb`. Seven of those tests are the localisation
-enforcement described above.
+The module's own test task is enough; nothing in it needs `adb`. Fifteen of those tests are the speaking
+notification — it appears on the first utterance and never on a suppressed one, a second utterance updates the
+one notice rather than stacking another, and finishing, Stop and an engine failure each end in its removal,
+with Stop when nothing is speaking a no-op — plus the module manifest that declares the service and the
+permission its type costs. Seven of the localisation enforcement tests described above are the remainder of
+that count.

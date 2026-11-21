@@ -64,6 +64,10 @@ class AndroidVoiceText(context: Context) : VoiceText {
             VoiceKeys.HINT_DEVICE_HEADSET_ONLY -> R.string.voice_hint_device_headset_only
             VoiceKeys.HINT_DEVICES_PERMISSION -> R.string.voice_hint_devices_permission
             VoiceKeys.SPEECH_LAST_NOT_PLAYED -> R.string.voice_speech_last_not_played
+            VoiceKeys.SPEAKING_CHANNEL -> R.string.voice_speaking_channel
+            VoiceKeys.SPEAKING_TITLE -> R.string.voice_speaking_title
+            VoiceKeys.SPEAKING_BODY -> R.string.voice_speaking_body
+            VoiceKeys.SPEAKING_STOP -> R.string.voice_speaking_stop
             VoiceKeys.BUTTON_SAVE_AND_RECONNECT -> R.string.voice_button_save_and_reconnect
             VoiceKeys.ACTION_TEST_SENT -> R.string.voice_action_test_sent
             VoiceKeys.BUTTON_SEND_TEST -> R.string.voice_button_send_test
