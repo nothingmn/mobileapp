@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- The loop reads connected audio outputs and the paired-device list to decide whether a reply may be
+         spoken at all; the app already asks for it for the watch connection. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+</manifest>

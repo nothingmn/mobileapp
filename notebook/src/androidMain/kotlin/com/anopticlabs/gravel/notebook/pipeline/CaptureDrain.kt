@@ -116,6 +116,17 @@ class CaptureDrain(
     private val notice: () -> CaptureNotice? = { null },
     private val serverTried: () -> Unit = {},
     private val admitted: (QueuedCapture) -> Unit = {},
+    /**
+     * Gravel: the voice loop's publish point. Called with the transcript the capture produced, before the text
+     * model runs; returns the requestId the turn went out under, or null when nothing was published. Unbound
+     * (the default) in a build without the loop, and nothing about the drain changes when it is.
+     */
+    private val onTranscribed: suspend (transcript: String) -> String? = { null },
+    /**
+     * Gravel: called with the requestId of a published turn and the note that capture settled as, so a later
+     * increment can put the answer into that note. Nothing reads it yet beyond holding the association.
+     */
+    private val onNoteSettled: suspend (requestId: String, noteId: String, title: String) -> Unit = { _, _, _ -> },
 ) {
     private val running = Mutex()
     private val requested = AtomicBoolean(false)
@@ -374,6 +385,7 @@ class CaptureDrain(
                 }
             }
             val folders = captureRouteFolders(notes.readFolders(strict = true))
+            var voiceRequestId: String? = null
             val request = CaptureRequest(
                 audio = audio,
                 capturedAt = Instant.fromEpochMilliseconds(entry.queuedAtMillis),
@@ -389,6 +401,7 @@ class CaptureDrain(
                 serverTries = entry.serverTries,
                 serverTriedAtMillis = entry.serverTriedAtMillis,
                 markServerTry = { at -> recordServerTry(entry.id, at) },
+                onTranscribed = { transcript -> onTranscribed(transcript).also { voiceRequestId = it } },
             )
             val built = backend.process(request) { stage ->
                 rows.stage(entry.id, stage)
@@ -400,6 +413,11 @@ class CaptureDrain(
                 publisher.publish(built, entry.queuedAtMillis, folders).also { dequeue(entry.id) }
             }
             settle(entry.id, published)
+            // Gravel: the note this capture became, remembered against the turn it also published. The id is
+            // available right here; a later increment appends the reply into that note from it.
+            if (published is PublishedCapture.NoteSaved) {
+                voiceRequestId?.let { requestId -> onNoteSettled(requestId, published.noteId, published.title) }
+            }
             logger.i { "capture ${entry.id} published as ${published::class.simpleName}" }
             return Outcome.Published
         } catch (e: CancellationException) {

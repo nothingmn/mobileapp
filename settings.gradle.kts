@@ -60,6 +60,9 @@ include(":libindex")
 // :composeApp).
 // include(":experimental")
 include(":krisp-stubs")
+// Gravel module: the Agentry voice loop (MQTT requests in, spoken replies out). Android only; the
+// VOICE_MQTT_ENABLED BuildKonfig flag defaults to false, which leaves it bound to nothing.
+include(":voice-mqtt")
 // Fork module: inert dev.gitlive.firebase.* stand-ins replacing the real
 // gitlive firebase-auth/firebase-firestore artifacts (see the Firebase
 // strip). Keeps upstream call sites compiling with no Firebase/GMS SDKs

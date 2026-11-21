@@ -57,6 +57,9 @@ class OnDeviceCaptureBackend(
         )
         val transcript = speech.transcribe(pcm16, capture)
         if (!hasSpeech(transcript)) throw CaptureProcessingException(CaptureFailureKind.FLAG, "no speech was heard", reason = CaptureFailureReason.NO_SPEECH)
+        // Gravel: the voice loop publishes exactly this transcript. It runs before the text model, and it is
+        // handed back the requestId it published under so the note this capture settles as can be remembered.
+        request.onTranscribed(transcript)
         val settings = request.settings
         val triggerOn = effectiveTriggerEnabled(settings.triggerEnabled, settings.triggerWord)
         shouldParkTriggerCompletion(triggerOn, settings.triggerWord, transcript)?.let { utterance ->

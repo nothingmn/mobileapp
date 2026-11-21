@@ -33,6 +33,8 @@ import com.anopticlabs.gravel.socketfilter.UdpSocketFilter
 import coredevices.ExperimentalDevices
 import com.anopticlabs.gravel.app.notebookEnginesModule
 import com.anopticlabs.gravel.app.notebookTabModule
+import com.anopticlabs.gravel.app.startVoiceMqtt
+import com.anopticlabs.gravel.app.voiceMqttModule
 import com.anopticlabs.gravel.app.notebookWatchAppModule
 import com.anopticlabs.gravel.app.ringClientModule
 import com.anopticlabs.gravel.app.textModelsModule
@@ -120,6 +122,8 @@ class MainApplication : Application(), SingletonImageLoader.Factory, Configurati
                 notebookModule,
                 notebookEnginesModule,
                 notebookTabModule,
+                // Gravel: binds the voice loop only when VOICE_MQTT_ENABLED is on; otherwise an empty module.
+                voiceMqttModule,
                 notebookWatchAppModule,
                 ringClientModule,
                 textModelsModule,
@@ -139,6 +143,8 @@ class MainApplication : Application(), SingletonImageLoader.Factory, Configurati
         adoptUnboundServerToken(coreConfigHolder, get())
         // Gravel: a force stop drops the Notebook's alarms; the sweep re-arms them from the stores.
         get<NotebookStartup>().start()
+        // Gravel: the voice loop connects only if the user enabled it; no-op when the flag is off.
+        startVoiceMqtt()
         // Gravel: the ring client's paired ring and bond watch, ahead of the background service it keeps up.
         get<LibIndex>().init(
             get<PermissionRequester>().missingPermissions.map { Permission.Bluetooth !in it }.distinctUntilChanged(),

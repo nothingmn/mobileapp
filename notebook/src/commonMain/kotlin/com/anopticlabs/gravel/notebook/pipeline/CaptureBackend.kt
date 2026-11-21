@@ -42,6 +42,12 @@ class CaptureRequest(
     val serverTries: Int = 0,
     val serverTriedAtMillis: Long? = null,
     val markServerTry: suspend (atMillis: Long) -> Boolean = { false },
+    /**
+     * Called once with the transcript this capture produced, before any text model sees it (Gravel: the voice
+     * loop publishes it). Returns the voice turn's requestId when something was published, so the capture's
+     * settled note can be remembered against it. Nothing is bound in a build without the loop.
+     */
+    val onTranscribed: suspend (transcript: String) -> String? = { null },
 )
 
 /** Turns a recording into what it asked for; failures as [CaptureProcessingException]. */

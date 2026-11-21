@@ -15,6 +15,7 @@ import com.anopticlabs.gravel.firmware.FirmwarePickerRoute
 import com.anopticlabs.gravel.firmware.FirmwarePickerScreen
 import com.anopticlabs.gravel.ui.TextModelsScreen
 import com.anopticlabs.gravel.ui.rememberNotebookTab
+import com.anopticlabs.gravel.ui.rememberVoiceMqttSettings
 import io.rebble.libpebblecommon.locker.AppType
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
@@ -134,6 +135,11 @@ object PebbleNavBarRoutes {
     @Serializable
     data object TextModelsRoute : NavBarRoute
 
+    // Gravel: Settings > Voice Assistant. Reached only from the Settings entry that a build with
+    // VOICE_MQTT_ENABLED on shows; with the flag off nothing navigates here and the route draws nothing.
+    @Serializable
+    data object VoiceMqttRoute : NavBarRoute
+
     @Serializable
     data class WatchSettingsCategoryRoute(val section: String, val topLevelType: String) : NavBarRoute
 }
@@ -228,6 +234,10 @@ fun NavGraphBuilder.addNavBarRoutes(
     }
     composableWithAnimations<PebbleNavBarRoutes.WatchSettingsRoute>(viewModel) {
         WatchSettingsScreen(nav, topBarParams)
+    }
+    composableWithAnimations<PebbleNavBarRoutes.VoiceMqttRoute>(viewModel) {
+        // Null with the flag off: the route exists for the saved navigation state and draws nothing.
+        rememberVoiceMqttSettings()?.Screen(topBarParams)
     }
     composableWithAnimations<PebbleNavBarRoutes.BatterySettingsRoute>(viewModel) {
         BatterySettingsScreen(nav, topBarParams)

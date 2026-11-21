@@ -17,6 +17,8 @@ okio = "3.18.0"
 kotlinx-io = "0.9.1"
 kotlinx-datetime = "0.8.0"
 koin = "4.2.2"
+# Eclipse Paho's MQTT v3 client, the voice loop's transport. Maven Central, plain JVM, no GMS.
+paho-mqtt = "1.2.5"
 atomicfu = "0.33.0"
 compose-multiplatform = "1.11.1"
 pebblekit = "1.1.0"
@@ -131,6 +133,7 @@ compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest", ve
 espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 kotlinx-io-okio = { module = "org.jetbrains.kotlinx:kotlinx-io-okio", version.ref = "kotlinx-io" }
 koin-core = { group = "io.insert-koin", name = "koin-core", version.ref = "koin" }
+paho-mqttv3 = { module = "org.eclipse.paho:org.eclipse.paho.client.mqttv3", version.ref = "paho-mqtt" }
 koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = "koin" }
 koin-compose = { group = "io.insert-koin", name = "koin-compose", version.ref = "koin" }
 koin-compose-viewmodel = { group = "io.insert-koin", name = "koin-compose-viewmodel", version.ref = "koin" }

@@ -52,6 +52,7 @@ import com.anopticlabs.gravel.notebook.pipeline.CaptureSpeech
 import com.anopticlabs.gravel.notebook.pipeline.ServerCheck
 import com.anopticlabs.gravel.notebook.pipeline.ServerNetworkWatch
 import com.anopticlabs.gravel.notebook.pipeline.SpeechSettingWatch
+import com.anopticlabs.gravel.notebook.pipeline.VoiceTurnSink
 import com.anopticlabs.gravel.notebook.pipeline.WorkManagerNetworkWork
 import com.anopticlabs.gravel.notebook.pipeline.WorkManagerServerTryWork
 import com.anopticlabs.gravel.network.UnmeteredWifi
@@ -208,6 +209,12 @@ val notebookModule = module {
             get(), get(), get(), get(), get(), settings = { get<NotebookPreferences>().captureSettings },
             rules = { get<ProcessingControls>().rules() }, notice = { get<CaptureSpeech>().notice() },
             serverTried = WorkManagerServerTryWork(androidContext())::schedule,
+            // Gravel: the voice loop's publish point. Nothing is bound here in a build without
+            // VOICE_MQTT_ENABLED, so both callbacks are no-ops and the capture pipeline is unaffected.
+            onTranscribed = { transcript -> getKoin().getOrNull<VoiceTurnSink>()?.publishTranscript(transcript) },
+            onNoteSettled = { requestId, noteId, title ->
+                getKoin().getOrNull<VoiceTurnSink>()?.rememberNote(requestId, noteId, title)
+            },
         )
     }
     single {

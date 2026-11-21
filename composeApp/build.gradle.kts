@@ -1,5 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.androidKotlinMultiplatformLibrary)
@@ -9,6 +11,19 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.nativeCocoaPods)
     alias(libs.plugins.kotlinx.atomicfu)
+}
+
+// Gravel: the Agentry voice loop's build flag, read exactly as :voice-mqtt reads it (local.properties first,
+// then -P/gradle.properties, then the environment). Off means the MQTT module is not even a dependency of this
+// module, and the no-op stand-ins in src/voiceMqttDisabled are compiled instead of the real bridge.
+val voiceMqttEnabled: Boolean = run {
+    val local = Properties().apply {
+        rootProject.file("local.properties").takeIf { it.exists() }?.reader()?.use { load(it) }
+    }
+    (local.getProperty("voiceMqttEnabled")
+        ?: providers.gradleProperty("voiceMqttEnabled").orNull
+        ?: System.getenv("VOICE_MQTT_ENABLED"))
+        ?.trim()?.equals("true", ignoreCase = true) ?: false
 }
 
 kotlin {
@@ -155,6 +170,12 @@ kotlin {
         }
     }
     
+    // Gravel: exactly one of the two bridge files is compiled — the real one, which needs :voice-mqtt on the
+    // classpath, or the no-op one that stands in when the flag is off.
+    sourceSets.getByName("androidMain").kotlin.srcDir(
+        if (voiceMqttEnabled) "src/voiceMqttEnabled/kotlin" else "src/voiceMqttDisabled/kotlin",
+    )
+
     sourceSets {
         all {
             languageSettings {
@@ -171,6 +192,9 @@ kotlin {
             // contribution are registered from the Android app graph; the
             // module has no iOS target, so it stays out of commonMain.
             implementation(project(":notebook"))
+            // Gravel: the Agentry voice loop (MQTT in, spoken replies out), Android only. Added to the graph
+            // only when VOICE_MQTT_ENABLED is on, so an off build carries neither the client nor a way to it.
+            if (voiceMqttEnabled) implementation(project(":voice-mqtt"))
             // Gravel: the Application class attaches the text engine's client;
             // Android only, like the Notebook it serves.
             implementation(project(":llm"))

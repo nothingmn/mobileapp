@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.outlined.EditNote
@@ -118,6 +119,7 @@ import com.anopticlabs.gravel.ui.fontGrowth
 import com.anopticlabs.gravel.ui.phoneCalendarFirstStep
 import com.anopticlabs.gravel.ui.phoneCalendarRefusalText
 import com.anopticlabs.gravel.ui.rememberNotebookTab
+import com.anopticlabs.gravel.ui.rememberVoiceMqttSettings
 import com.anopticlabs.gravel.ui.rememberTextModels
 import com.anopticlabs.gravel.ui.textModelsSummary
 import com.anopticlabs.gravel.weather.WeatherConsentDialog
@@ -234,6 +236,9 @@ enum class Section(val title: String, val icon: ImageVector) {
     Health("Health", Icons.AutoMirrored.Filled.DirectionsRun),
     AI("AI", Icons.Default.AutoAwesome), // Gravel
     Speech("Speech Recognition", Icons.Default.Mic), // Gravel: opened from AI, see parent()
+    // Gravel: the Agentry voice loop. Present only in a build with VOICE_MQTT_ENABLED on, because only then
+    // does anything bind the page this section holds.
+    VoiceAssistant("Voice Assistant", Icons.Default.VolumeUp),
     Display("Display", Icons.Default.DarkMode), // watch only
     Weather("Weather", Icons.Default.Cloud),
     Notifications("Notifications", Icons.Default.Notifications),
@@ -623,6 +628,8 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
     val healthPlatformSyncEnabled by healthSyncTracker.enabled.collectAsState()
     val healthIsSyncing by platformHealthSync.syncing.collectAsState()
     val notebookTab = rememberNotebookTab()
+    // Gravel: null in a build without the voice loop, which is what keeps its Settings entry out entirely.
+    val voiceMqtt = rememberVoiceMqttSettings()
     val notebookShown = notebookTab?.shown?.collectAsState()?.value == true
     val deepLinks = koinInject<PebbleDeepLinkHandler>()
     val notebookGuideDone = notebookTab?.takeIf { it.supported }?.setupGuide?.collectAsState()?.value?.done == true
@@ -708,6 +715,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
             notebookAutoBackup,
             calendarAccess,
             textModelFacts,
+            voiceMqtt,
             notebookGuideDone,
             notebookWatchAppItems,
             hasOfflineModels,
@@ -1130,6 +1138,19 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                         section = Section.Notebook,
                         keywords = "notebook key encryption strongbox secure hardware",
                     )
+                },
+                // Gravel: the voice loop's page, offered only where the loop is bound (flag on).
+                voiceMqtt?.takeIf { it.available }?.let {
+                    navBarNav?.let { nav ->
+                        basicSettingsActionItem(
+                            title = "Voice Assistant",
+                            description = "Send what is recorded to an assistant over MQTT and hear the answer through a Bluetooth headset",
+                            topLevelType = TopLevelType.Phone,
+                            section = Section.VoiceAssistant,
+                            keywords = "voice assistant mqtt broker headset speak reply tts",
+                            action = { nav.navigateTo(PebbleNavBarRoutes.VoiceMqttRoute) },
+                        )
+                    }
                 },
                 basicSettingsToggleItem(
                     title = "Foreground Service",
