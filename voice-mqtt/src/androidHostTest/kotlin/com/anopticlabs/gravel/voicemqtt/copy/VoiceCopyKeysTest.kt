@@ -30,21 +30,21 @@ class VoiceCopyKeysTest {
     private val french = strings("src/androidMain/res/values-fr/strings.xml")
 
     @Test
-    fun bothLocalesHoldExactlyTheSameKeys() {
+    fun bothLocalesHoldExactlyTheSameVoiceKeys() {
+        // Scoped to this feature's own keys, and deliberately not full-file parity: a string that is not the voice
+        // loop's business (a future upstream one in this module) must not fail the build for having no translation.
         assertEquals(
-            english.keys,
+            voiceKeys(english),
             french.keys,
             "a key missing from values-fr/strings.xml would fall back to English silently",
         )
+        assertTrue(french.keys.all { it.startsWith("voice_") }, "values-fr holds this feature's copy only")
     }
 
     @Test
     fun theCodeAndTheResourcesNameTheSameKeys() {
-        assertEquals(
-            VoiceKeys.all,
-            english.keys,
-            "every key the code can ask for is in the resources, and no resource is unreachable",
-        )
+        assertTrue(VoiceKeys.all.all { it in english.keys }, "every key the code can ask for is in the resources")
+        assertEquals(VoiceKeys.all, voiceKeys(english), "no voice_ resource is unreachable from the code")
     }
 
     @Test
@@ -61,7 +61,7 @@ class VoiceCopyKeysTest {
         for ((constant, resource) in mapped) {
             assertEquals("voice_" + constant.lowercase(), resource, "$constant maps to the resource of its own name")
         }
-        assertEquals(english.keys, mapped.values.toSet(), "the table reaches every resource and only those")
+        assertEquals(voiceKeys(english), mapped.values.toSet(), "the table reaches every resource and only those")
     }
 
     @Test
@@ -107,8 +107,33 @@ class VoiceCopyKeysTest {
 
     @Test
     fun noUserFacingEnglishSentenceIsLeftInTheKotlinThatShowsOrSaysOne() {
-        // Log tags, log lines, topics and protocol values are developer text and stay as they are, which is what
-        // this allowlist is: everything on it is unreachable from the screen and from the speaker.
+        val sources = filesUnder("src/androidMain/kotlin") + filesUnder("src/commonMain/kotlin")
+        val offences = scan(sources)
+        assertTrue(offences.isEmpty(), "user-facing English left in the source:\n" + offences.joinToString("\n"))
+    }
+
+    @Test
+    fun theScanFindsASentenceWhenThereIsOne() {
+        // The control for the scan above, kept inside the test rather than as a probe file in the source tree: a
+        // passing scan must mean "nothing left", not "the scan stopped looking".
+        val probe = File(moduleDir, "build/scan-probe/Probe.kt").apply {
+            parentFile.mkdirs()
+            writeText("internal const val PROBE = \"A user-facing sentence that fails the scan.\"\n")
+        }
+        try {
+            assertEquals(1, scan(listOf(probe)).size, "the scan does find a sentence when one is there")
+        } finally {
+            probe.parentFile.deleteRecursively()
+        }
+    }
+
+    /**
+     * Every literal in [sources] that reads as copy someone would see and is not developer text.
+     *
+     * Log tags, log lines, topics and protocol values are developer text and stay as they are, which is what the
+     * allowlist is: everything on it is unreachable from the screen and from the speaker.
+     */
+    private fun scan(sources: List<File>): List<String> {
         val developerText = setOf(
             "reply not spoken: spoken replies are switched off",
             "reply not spoken: no Bluetooth audio output is connected",
@@ -132,7 +157,7 @@ class VoiceCopyKeysTest {
             "false",
         )
         val offences = mutableListOf<String>()
-        for (source in filesUnder("src/androidMain/kotlin") + filesUnder("src/commonMain/kotlin")) {
+        for (source in sources) {
             source.readLines().forEachIndexed { index, line ->
                 val trimmed = line.trim()
                 if (trimmed.startsWith("*") || trimmed.startsWith("/*") || trimmed.startsWith("//")) return@forEachIndexed
@@ -150,8 +175,12 @@ class VoiceCopyKeysTest {
                 }
             }
         }
-        assertTrue(offences.isEmpty(), "user-facing English left in the source:\n" + offences.joinToString("\n"))
+        return offences
     }
+
+    /** This feature's own keys in [values]: the prefix is what keeps the rest of a module's strings out of scope. */
+    private fun voiceKeys(values: Map<String, String>): Set<String> =
+        values.keys.filter { it.startsWith("voice_") }.toSet()
 
     private fun strings(path: String): Map<String, String> {
         val text = File(moduleDir, path).readText()

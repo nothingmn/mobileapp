@@ -89,10 +89,30 @@ class TextToSpeechCopyKeysTest {
 
     @Test
     fun noUserFacingEnglishSentenceIsLeftInTheKotlinThatDrawsOne() {
-        // Log tags, log lines, resource keys and protocol values are developer text and stay as they are.
+        val offences = scan(filesOf("TextToSpeechScreen.kt", "TextToSpeechSettings.kt", "TextToSpeechCopy.kt"))
+        assertTrue(offences.isEmpty(), "user-facing English left in the source:\n" + offences.joinToString("\n"))
+    }
+
+    @Test
+    fun theScanFindsASentenceWhenThereIsOne() {
+        // The control for the scan above, kept inside the test rather than as a probe file in the source tree: a
+        // passing scan must mean "nothing left", not "the scan stopped looking".
+        val probe = File(moduleDir, "build/scan-probe/Probe.kt").apply {
+            parentFile.mkdirs()
+            writeText("internal const val PROBE = \"A user-facing sentence that fails the scan.\"\n")
+        }
+        try {
+            assertEquals(1, scan(listOf(probe)).size, "the scan does find a sentence when one is there")
+        } finally {
+            probe.parentFile.deleteRecursively()
+        }
+    }
+
+    /** Every literal in [sources] that reads as copy someone would see and is not developer text. */
+    private fun scan(sources: List<File>): List<String> {
         val developerText = setOf("no string resource for ")
         val offences = mutableListOf<String>()
-        for (source in filesOf("TextToSpeechScreen.kt", "TextToSpeechSettings.kt", "TextToSpeechCopy.kt")) {
+        for (source in sources) {
             source.readLines().forEachIndexed { index, line ->
                 val trimmed = line.trim()
                 if (trimmed.startsWith("*") || trimmed.startsWith("/*") || trimmed.startsWith("//")) return@forEachIndexed
@@ -105,7 +125,7 @@ class TextToSpeechCopyKeysTest {
                 }
             }
         }
-        assertTrue(offences.isEmpty(), "user-facing English left in the source:\n" + offences.joinToString("\n"))
+        return offences
     }
 
     @Test
