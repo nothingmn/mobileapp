@@ -62,6 +62,9 @@ object VoiceKeys {
     const val FILING_CHANGED_AFTER_RETRY = "voice_filing_changed_after_retry"
     const val FILING_EMPTY_ANSWER = "voice_filing_empty_answer"
     const val FILING_STORAGE_UNAVAILABLE = "voice_filing_storage_unavailable"
+    // The answer arrived before its recording had settled as a note, and no note was ever linked to it.
+    const val FILING_NO_NOTE_LINKED = "voice_filing_no_note_linked"
+    const val FILING_NO_SINK = "voice_filing_no_sink"
 
     // The speech engine's own state, shown under the switches.
     const val ENGINE_START_FAILED = "voice_engine_start_failed"
@@ -169,6 +172,8 @@ object VoiceKeys {
         FILING_CHANGED_AFTER_RETRY,
         FILING_EMPTY_ANSWER,
         FILING_STORAGE_UNAVAILABLE,
+        FILING_NO_NOTE_LINKED,
+        FILING_NO_SINK,
         ENGINE_START_FAILED,
         ENGINE_INIT_FAILED,
         ENGINE_DEFAULT,

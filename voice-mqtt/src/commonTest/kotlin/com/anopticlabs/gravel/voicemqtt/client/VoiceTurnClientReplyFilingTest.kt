@@ -6,6 +6,7 @@ import com.anopticlabs.gravel.voicemqtt.session.VoiceReplyHandler
 import com.anopticlabs.gravel.voicemqtt.session.VoiceSessionManager
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
 import com.anopticlabs.gravel.voicemqtt.speech.SpeechOutput
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -63,7 +64,7 @@ class VoiceTurnClientReplyFilingTest {
     private fun client(
         scope: CoroutineScope,
         transport: FakeTransport,
-        speaker: Recorder,
+        speaker: SpeechOutput,
         filed: MutableList<String>,
     ) = VoiceTurnClient(
         transport = transport,
@@ -139,6 +140,44 @@ class VoiceTurnClientReplyFilingTest {
 
         assertTrue(filed.isEmpty(), "another turn's answer is dropped unread, so it is never filed here")
         assertTrue(speaker.events.isEmpty())
+    }
+
+    /**
+     * The user taps Stop on the speaking notice while the answer is being read. Playback ends early — and the
+     * answer still reaches its note, because the note is the only copy that outlives the sentence.
+     *
+     * A Stop is modelled the way it reaches this code: the speaker's own call ends in a cancellation. Filing
+     * sits in a `finally`, so nothing about how the sentence ended can take the answer with it.
+     */
+    @Test
+    fun anAnswerIsStillFiledWhenTheUserStopsItFromBeingSpoken() = runTest {
+        val transport = FakeTransport()
+        val filed = mutableListOf<String>()
+        val stopping = object : SpeechOutput {
+            val events = mutableListOf<String>()
+            override suspend fun speak(text: String) {
+                events += "stopped: $text"
+                throw CancellationException("the user stopped this reply")
+            }
+        }
+        val client = client(backgroundScope, transport, stopping, filed)
+        client.publishTranscript("turn on the garage lights")
+        val ours = transport.published.single().second.requestId
+
+        client.onReplyMessage(reply(requestId = ours, text = "The garage lights are on."))
+
+        assertEquals(listOf("stopped: The garage lights are on."), stopping.events, "the reply was cut short")
+        assertEquals(
+            listOf("$ours:The garage lights are on."),
+            filed,
+            "a stop ends the speech, never the answer: it is still offered to its note",
+        )
+
+        // And the loop is not left broken by it: the next turn goes out and is answered as usual.
+        client.publishTranscript("turn on the kitchen lights")
+        val next = transport.published.last().second.requestId
+        client.onReplyMessage(reply(requestId = next, text = "The kitchen lights are on."))
+        assertEquals(2, filed.size, "the turn after a stop files normally")
     }
 
     private fun reply(requestId: String, text: String) =

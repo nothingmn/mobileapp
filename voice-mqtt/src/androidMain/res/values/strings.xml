@@ -65,6 +65,8 @@
     <string name="voice_filing_changed_after_retry">Last reply was not filed: its note changed twice while it was being filed.</string>
     <string name="voice_filing_empty_answer">Last reply was not filed: it had no text to keep.</string>
     <string name="voice_filing_storage_unavailable">Last reply was not filed: the notebook\'s storage was unavailable.</string>
+    <string name="voice_filing_no_note_linked">Last reply was not filed: no note was linked for it, so it was only spoken.</string>
+    <string name="voice_filing_no_sink">Last reply was not filed: this build has nothing to file an answer into.</string>
 
     <!-- The speech engine and the Bluetooth name it may have to stand in for. -->
     <string name="voice_engine_start_failed">The speech engine could not be started, so replies are not played.</string>

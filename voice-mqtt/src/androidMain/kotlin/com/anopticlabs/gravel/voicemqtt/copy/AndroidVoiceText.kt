@@ -81,6 +81,8 @@ class AndroidVoiceText(context: Context) : VoiceText {
             VoiceKeys.FILING_CHANGED_AFTER_RETRY -> R.string.voice_filing_changed_after_retry
             VoiceKeys.FILING_EMPTY_ANSWER -> R.string.voice_filing_empty_answer
             VoiceKeys.FILING_STORAGE_UNAVAILABLE -> R.string.voice_filing_storage_unavailable
+            VoiceKeys.FILING_NO_NOTE_LINKED -> R.string.voice_filing_no_note_linked
+            VoiceKeys.FILING_NO_SINK -> R.string.voice_filing_no_sink
             VoiceKeys.ENGINE_START_FAILED -> R.string.voice_engine_start_failed
             VoiceKeys.ENGINE_INIT_FAILED -> R.string.voice_engine_init_failed
             VoiceKeys.ENGINE_DEFAULT -> R.string.voice_engine_default

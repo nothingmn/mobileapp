@@ -64,6 +64,8 @@
     <string name="voice_filing_changed_after_retry">La dernière réponse n\'a pas été classée : sa note a changé deux fois pendant le classement.</string>
     <string name="voice_filing_empty_answer">La dernière réponse n\'a pas été classée : elle n\'avait aucun texte à conserver.</string>
     <string name="voice_filing_storage_unavailable">La dernière réponse n\'a pas été classée : le stockage du carnet était inaccessible.</string>
+    <string name="voice_filing_no_note_linked">La dernière réponse n\'a pas été classée : aucune note n\'y était associée, elle a seulement été prononcée.</string>
+    <string name="voice_filing_no_sink">La dernière réponse n\'a pas été classée : cette version n\'a rien dans quoi classer une réponse.</string>
 
     <!-- Le moteur de synthèse, et le nom de rechange quand un appareil Bluetooth n'en donne pas. -->
     <string name="voice_engine_start_failed">Le moteur de synthèse vocale n\'a pas pu démarrer, donc les réponses ne sont pas lues.</string>

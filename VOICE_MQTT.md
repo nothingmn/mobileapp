@@ -225,8 +225,10 @@ flag.
 ## Reply filed into the note
 
 The answer is spoken *and* kept. Once it has been spoken, the loop appends it into the note that recording
-produced: the capture drain settles a recording as a note before the turn is published, so the loop already
-holds `requestId → note` in memory when that requestId's answer arrives.
+produced, as soon as the loop knows which note that is — and the two do not arrive in a fixed order. The capture
+drain publishes the transcript the moment it has been transcribed, *before* the text model runs, and the note id
+exists only once the capture has settled, so on a fast local broker the answer is regularly back before there is
+a note to put it in. That is what the reconciliation below is for.
 
 What lands in the note is a quote block, one blank line below the note's own text:
 
@@ -262,6 +264,65 @@ off afterwards, so an answer is heard whether or not its note still exists or ca
 never suppress, delay or undo the speech. Each attempt leaves one entry in the loop's filing history — *filed
 into "Garage"*, or the reason it was not — which the settings screen shows as the last line above the save
 button.
+
+### An answer that arrives before its note
+
+The order is not the one the first version of this feature assumed. The drain publishes the turn the moment the
+transcript exists and hands the note id over only once the capture has settled:
+
+```
+request.onTranscribed(transcript)                 // the turn goes out here, with its requestId
+...
+val published = publisher.publish(built, ...)     // the note exists only now
+if (published is PublishedCapture.NoteSaved) onNoteSettled(requestId, published.noteId, published.title)
+```
+
+Between those two lines the text model runs. On a local Agentry instance the answer can be back in well under a
+second, so the reply frequently arrives with no note linked to it yet — and a reply in that position used to be
+dropped by a bare `return`: spoken, never kept, with nothing in logcat and nothing on the screen to say so.
+
+Three outcomes now, and none of them is silence:
+
+- **linked already** — filed on the spot, exactly as before. The common path costs nothing extra.
+- **not linked yet** — the answer is **held**, and filed the moment the drain hands over that requestId's note.
+- **never linked** — the held answer is **dropped when its window closes**, and the drop is recorded with its
+  reason.
+
+**The window is five minutes**, `ANSWER_LINK_WINDOW_MILLIS` in `VoiceReplyReconciler.kt`, and it is deliberately
+the same number as the loop's session idle window (`SESSION_IDLE_MILLIS`): after five idle minutes the server has
+reset the session and this turn is history, so an answer still without a note by then is not going to get one.
+Longer would keep a stale answer alive past its turn; shorter would expire under a slow text model on a full
+queue. A sweep when the window ends removes the held answer; the same sweep is what keeps the book small, since
+a link whose turn was never answered at all is dropped after one window too.
+
+**A turn is filed once.** A second answer for the same requestId is refused as a duplicate rather than appended
+twice, and a note registered after its answer has already been filed or dropped is told so instead of being kept
+for an answer that will never come. The Stop button does not affect any of this: the hand-off sits in a `finally`
+around the speaker call, so a reply cut short mid-sentence is still offered to its note.
+
+**Every decision gets one line at info level in logcat**, always naming the turn:
+
+```
+answer <requestId> filed into note <noteId> as a quote block (Appended)
+answer <requestId> not filed into note <noteId>: the note is gone (NotListed)
+answer <requestId> not filed into note <noteId>: the note is in the archive (Archived)
+answer <requestId> not filed into note <noteId>: the note changed twice under the append (ChangedAfterRetry)
+answer <requestId> not filed into note <noteId>: the answer had no text (EmptyAnswer)
+answer <requestId> not filed into note <noteId>: the notebook's storage was unavailable (StorageUnavailable)
+answer <requestId> not filed: no note was linked for this reply within 300 s
+answer <requestId> not filed: no note sink is bound in this build
+```
+
+and two more that describe the waiting itself:
+
+```
+answer <requestId> held: no note is linked to it yet; waiting up to 300 s for one
+answer <requestId> not filed again: this turn's answer was already offered to a note
+```
+
+The settings screen shows the newest of these decisions in words, translated, as the last line above the save
+button — including the case this section exists for: *"Last reply was not filed: no note was linked for it, so it
+was only spoken."*
 
 ## Turning the app's own reminders off
 
@@ -402,8 +463,9 @@ harmless: a second answer to an answered requestId is dropped unread.
 ## Notes for the next increment
 
 When a capture settles as a note, the drain hands the turn's `requestId` and that note's id and title to the
-loop, which keeps the association in memory (`VoiceMqttController.rememberNote`) until that requestId's answer
-is filed into the note and the link is dropped.
+loop (`VoiceMqttController.rememberNote`, which delegates to `VoiceReplyFiler`). The association is kept in
+memory until that requestId's answer is filed into the note and the turn is spent — and an answer that is
+already waiting when the note arrives is filed on the spot, not on the next turn.
 
 Confirmation prompts (the protocol's mid-turn human-in-the-loop) are deliberately **not** implemented; the
 protocol says not to build them into v1.

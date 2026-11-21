@@ -5,8 +5,27 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** What the loop did with the note a spoken answer belonged to: filed into [title], or why not, and when. */
-data class VoiceReplyFileRun(val atMillis: Long, val title: String, val outcome: NoteReplyResult)
+/**
+ * What became of a spoken answer: the note it went into and what the notebook said about it, or the reason it
+ * never reached one at all.
+ *
+ * [NoNoteLinked] is the one this feature used to be silent about: the answer came back before the recording had
+ * settled as a note, and it was dropped without a trace. It is a recorded reason now, with its own sentence on
+ * the settings screen.
+ */
+sealed interface VoiceReplyFilingOutcome {
+    /** A note was found and offered the answer; [result] is the notebook's own word for what happened. */
+    data class NoteSaid(val title: String, val result: NoteReplyResult) : VoiceReplyFilingOutcome
+
+    /** Nothing was filed: no note was ever linked to this turn inside the loop's window. */
+    data object NoNoteLinked : VoiceReplyFilingOutcome
+
+    /** Nothing was filed: this build has no reply sink bound, so there is nothing to file into. */
+    data object NoNoteSink : VoiceReplyFilingOutcome
+}
+
+/** What the loop did with the note a spoken answer belonged to: filed into it, or why not, and when. */
+data class VoiceReplyFileRun(val atMillis: Long, val outcome: VoiceReplyFilingOutcome)
 
 /**
  * The loop's own record of filing answers into notes, newest first, kept short — the sibling of the speech
@@ -22,8 +41,8 @@ class VoiceReplyFileHistory(
     /** Newest first. */
     val runs: StateFlow<List<VoiceReplyFileRun>> = _runs.asStateFlow()
 
-    fun recorded(title: String, outcome: NoteReplyResult) {
-        val run = VoiceReplyFileRun(now(), title, outcome)
+    fun recorded(outcome: VoiceReplyFilingOutcome) {
+        val run = VoiceReplyFileRun(now(), outcome)
         _runs.value = (listOf(run) + _runs.value).take(limit)
     }
 }

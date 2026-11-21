@@ -44,6 +44,7 @@ import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
 import com.anopticlabs.gravel.voicemqtt.speech.BluetoothAudioGate
 import com.anopticlabs.gravel.voicemqtt.speech.PlaybackPolicy
 import com.anopticlabs.gravel.voicemqtt.speech.VoiceReplyFileRun
+import com.anopticlabs.gravel.voicemqtt.speech.VoiceReplyFilingOutcome
 import com.anopticlabs.gravel.voicemqtt.speech.VoiceSpeechRun
 
 /**
@@ -330,13 +331,18 @@ fun VoiceMqttSettingsContent(
 
 /** What became of the last answer: filed into the note its recording produced, or the reason it was not. */
 private fun filingSentence(run: VoiceReplyFileRun, text: VoiceText): String = text.of(
-    when (run.outcome) {
-        NoteReplyResult.Appended -> VoiceCopy(VoiceKeys.FILING_APPENDED, run.title)
-        NoteReplyResult.NotListed -> VoiceCopy(VoiceKeys.FILING_NOT_LISTED)
-        NoteReplyResult.Archived -> VoiceCopy(VoiceKeys.FILING_ARCHIVED)
-        NoteReplyResult.ChangedAfterRetry -> VoiceCopy(VoiceKeys.FILING_CHANGED_AFTER_RETRY)
-        NoteReplyResult.EmptyAnswer -> VoiceCopy(VoiceKeys.FILING_EMPTY_ANSWER)
-        NoteReplyResult.StorageUnavailable -> VoiceCopy(VoiceKeys.FILING_STORAGE_UNAVAILABLE)
+    when (val outcome = run.outcome) {
+        is VoiceReplyFilingOutcome.NoteSaid -> when (outcome.result) {
+            NoteReplyResult.Appended -> VoiceCopy(VoiceKeys.FILING_APPENDED, outcome.title)
+            NoteReplyResult.NotListed -> VoiceCopy(VoiceKeys.FILING_NOT_LISTED)
+            NoteReplyResult.Archived -> VoiceCopy(VoiceKeys.FILING_ARCHIVED)
+            NoteReplyResult.ChangedAfterRetry -> VoiceCopy(VoiceKeys.FILING_CHANGED_AFTER_RETRY)
+            NoteReplyResult.EmptyAnswer -> VoiceCopy(VoiceKeys.FILING_EMPTY_ANSWER)
+            NoteReplyResult.StorageUnavailable -> VoiceCopy(VoiceKeys.FILING_STORAGE_UNAVAILABLE)
+        }
+        // The answer came back before its recording had settled as a note and no note was ever linked to it.
+        VoiceReplyFilingOutcome.NoNoteLinked -> VoiceCopy(VoiceKeys.FILING_NO_NOTE_LINKED)
+        VoiceReplyFilingOutcome.NoNoteSink -> VoiceCopy(VoiceKeys.FILING_NO_SINK)
     },
 )
 

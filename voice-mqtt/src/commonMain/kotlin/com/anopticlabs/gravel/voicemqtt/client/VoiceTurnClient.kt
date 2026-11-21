@@ -1,5 +1,6 @@
 package com.anopticlabs.gravel.voicemqtt.client
 
+import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.voicemqtt.copy.VoiceCopy
 import com.anopticlabs.gravel.voicemqtt.copy.VoiceText
 import com.anopticlabs.gravel.voicemqtt.protocol.EnvelopeRefusal
@@ -12,8 +13,11 @@ import com.anopticlabs.gravel.voicemqtt.session.VoiceSessionManager
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
 import com.anopticlabs.gravel.voicemqtt.speech.SpeechOutput
 import com.anopticlabs.gravel.voicemqtt.speech.VoiceLoopSentences
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -75,9 +79,19 @@ class VoiceTurnClient(
             ReplyOutcome.Ignored -> Unit
             is ReplyOutcome.Final -> {
                 forget(outcome.requestId)
-                speaker.speak(outcome.text)
                 // Spoken first, always: keeping the answer is a separate, best-effort step the caller owns.
-                onAnswer(outcome.requestId, outcome.text)
+                // But it is a step that must happen even when speaking does not finish. A Stop aborts the
+                // utterance, and the answer is the only thing that survives it — so the hand-off sits in a
+                // `finally`, and a stop that surfaces as a cancellation of this turn is not allowed to take
+                // the note's copy with it.
+                try {
+                    speaker.speak(outcome.text)
+                } catch (e: CancellationException) {
+                    if (!currentCoroutineContext().isActive) throw e
+                    logger.i { "answer for ${outcome.requestId} stopped while spoken; still offered to its note" }
+                } finally {
+                    onAnswer(outcome.requestId, outcome.text)
+                }
             }
             is ReplyOutcome.Failed -> {
                 forget(outcome.requestId)
@@ -179,4 +193,8 @@ class VoiceTurnClient(
     /** The opaque code is never spoken; only the sentence that goes with it. */
     private fun failureFor(code: String): String =
         copy.of(if (code == "payload_size") VoiceLoopSentences.TOO_LARGE else VoiceLoopSentences.FAILURE)
+
+    private companion object {
+        val logger = Logger.withTag("VoiceTurnClient")
+    }
 }
