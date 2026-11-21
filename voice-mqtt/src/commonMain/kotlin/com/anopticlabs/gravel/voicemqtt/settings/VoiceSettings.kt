@@ -12,11 +12,23 @@ const val DEFAULT_BROKER_PORT = 1883
 enum class VoiceField { HOST, PORT, INGRESS_TOPIC, EGRESS_TOPIC }
 
 /**
+ * A Bluetooth audio device the user pinned replies to. The name is for the picker only; nothing here is ever
+ * sent anywhere.
+ */
+data class PreferredDevice(val address: String, val name: String)
+
+/**
  * Everything the client needs at connect time. Nothing here is compiled in beyond the defaults: the host,
  * port, TLS, credentials and both topics are the user's, and changing any of them reconnects the client.
  *
- * [speakOnlyWithHeadset] defaults to true, and there is deliberately no always-speak-without-a-headset mode:
- * a reply is spoken only when a Bluetooth audio device is connected at the moment of speaking.
+ * The two speaking switches are independent, and neither is forced:
+ * - [speakReplies] (default on) is whether replies are spoken at all. Off is the user's own choice, so the
+ *   silence that follows is correct: the reply still arrives, and a later increment still writes it to the note.
+ * - [headsetOnly] (default on) is whether playback is restricted to Bluetooth. Off means whatever output is
+ *   active, the phone's speaker included.
+ *
+ * [preferredDevice] only means anything while [headsetOnly] is on: it narrows playback to that one device, and
+ * a device that is paired but not connected is still not an output.
  */
 data class VoiceSettings(
     val enabled: Boolean = false,
@@ -29,11 +41,10 @@ data class VoiceSettings(
     val password: String = "",
     val ingressTopic: String = DEFAULT_INGRESS_TOPIC,
     val egressTopic: String = DEFAULT_EGRESS_TOPIC,
-    val speakOnlyWithHeadset: Boolean = true,
-    /** BLE/MAC address of the one Bluetooth device replies may be spoken on; null means any of them. */
-    val headsetAddress: String? = null,
-    /** The chosen device's name, for the picker only; never sent anywhere. */
-    val headsetName: String? = null,
+    val speakReplies: Boolean = true,
+    val headsetOnly: Boolean = true,
+    /** The one Bluetooth device replies may be spoken on; null means any of them. */
+    val preferredDevice: PreferredDevice? = null,
 ) {
     /** Field-keyed inline errors; empty means the settings may be used. */
     fun errors(): Map<VoiceField, String> = buildMap {
@@ -59,5 +70,6 @@ data class VoiceSettings(
     override fun toString(): String =
         "VoiceSettings(enabled=$enabled, server=$serverUri, tls=$tls, trustSelfSigned=$trustSelfSigned, " +
             "username=${if (username.isEmpty()) "" else "<set>"}, password=${if (password.isEmpty()) "" else "<set>"}, " +
-            "ingress=$ingressTopic, egress=$egressTopic, headsetOnly=$speakOnlyWithHeadset, headset=${headsetName ?: "any"})"
+            "ingress=$ingressTopic, egress=$egressTopic, speakReplies=$speakReplies, headsetOnly=$headsetOnly, " +
+            "headset=${preferredDevice?.name ?: "any"})"
 }

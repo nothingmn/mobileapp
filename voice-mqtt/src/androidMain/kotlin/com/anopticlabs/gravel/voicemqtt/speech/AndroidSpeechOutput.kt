@@ -14,14 +14,20 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Speaks the loop's sentences through the platform's own text-to-speech engine, on the phone's speaker only
- * when a Bluetooth headset is connected (see [BluetoothAudioGate]).
+ * Speaks the loop's sentences through the platform's own text-to-speech engine when the two switches allow it
+ * (see [PlaybackPolicy] and [BluetoothAudioGate]): nothing at all with spoken replies off, a live Bluetooth
+ * output with headset only on, whatever output is active with it off.
  *
- * Two rules beyond the gate:
+ * A sentence that is held back is recorded rather than swallowed: one log line naming the reason and one entry
+ * in [VoiceSpeechHistory], which the settings screen shows. It is never an error to speak aloud — the reason
+ * there is no audio is usually that there is nowhere to put it.
+ *
+ * Two rules beyond the switches:
  * - **The microphone wins.** While the phone is recording, a reply waits; a newer line replaces an older one
  *   that is still waiting (they are stale answers to answers), and a line still waiting after
  *   [MIC_WAIT_MILLIS] is dropped rather than queued behind a long recording. So: queued, newest only, dropped
@@ -34,6 +40,7 @@ class AndroidSpeechOutput(
     private val settings: () -> VoiceSettings,
     private val gate: BluetoothAudioGate,
     private val micBusy: () -> Boolean,
+    private val history: VoiceSpeechHistory,
     scope: CoroutineScope,
 ) : SpeechOutput {
 
@@ -56,6 +63,9 @@ class AndroidSpeechOutput(
     override suspend fun speak(text: String) {
         lines.trySend(text)
     }
+
+    /** What the loop did with each sentence, newest first; the settings screen reads the head of it. */
+    val runs: StateFlow<List<VoiceSpeechRun>> get() = history.runs
 
     private fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
@@ -84,11 +94,14 @@ class AndroidSpeechOutput(
     }
 
     private suspend fun speakWhenPossible(line: String) {
-        // The gate is asked twice: now, so a hopeless line is dropped before any waiting, and again right
+        // The decision is asked twice: now, so a hopeless line is dropped before any waiting, and again right
         // before playback, because a headset can disconnect while a line is queued.
-        if (!gate.maySpeak(settings())) {
-            logger.i { "reply not spoken: no Bluetooth audio device is connected" }
-            return
+        when (val decision = gate.decision(settings())) {
+            PlaybackDecision.Speak -> Unit
+            is PlaybackDecision.Silent -> {
+                suppress(decision.reason)
+                return
+            }
         }
         var waited = 0L
         while (micBusy() && waited < MIC_WAIT_MILLIS) {
@@ -99,9 +112,12 @@ class AndroidSpeechOutput(
             logger.i { "reply dropped: the microphone is still recording" }
             return
         }
-        if (!gate.maySpeak(settings())) {
-            logger.i { "reply not spoken: the Bluetooth audio device went away" }
-            return
+        when (val decision = gate.decision(settings())) {
+            PlaybackDecision.Speak -> Unit
+            is PlaybackDecision.Silent -> {
+                suppress(decision.reason)
+                return
+            }
         }
         val usable = withTimeoutOrNull(INIT_TIMEOUT_MILLIS) { ready.await() } ?: false
         if (!usable) {
@@ -111,6 +127,13 @@ class AndroidSpeechOutput(
         requestFocus()
         val utteranceId = "gravel-voice-${counter.incrementAndGet()}"
         engine?.speak(line, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+        history.spoken()
+    }
+
+    /** A held-back sentence: one log line and one run-history entry, never an error to say aloud. */
+    private fun suppress(reason: SpeechSuppression) {
+        logger.i { PlaybackPolicy.logLine(reason) }
+        history.suppressed(reason)
     }
 
     private fun requestFocus() {

@@ -12,6 +12,8 @@ import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettingsStore
 import com.anopticlabs.gravel.voicemqtt.speech.AndroidSpeechOutput
 import com.anopticlabs.gravel.voicemqtt.speech.BluetoothAudioGate
+import com.anopticlabs.gravel.voicemqtt.speech.VoiceSpeechHistory
+import com.anopticlabs.gravel.voicemqtt.speech.VoiceSpeechRun
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -139,10 +141,13 @@ class VoiceMqttController(
 /**
  * What the app builds once, when the VOICE_MQTT_ENABLED flag is on. [micBusy] is the app's own answer to
  * "is the microphone recording right now", which is what keeps a reply from bleeding into a recording.
+ * [speechRuns] is the speaker's own record of what it did with each sentence, so a reply that was held back is
+ * a visible fact on the settings screen instead of a silence.
  */
 class VoiceMqttEngine(
     val controller: VoiceMqttController,
     val gate: BluetoothAudioGate,
+    val speechRuns: StateFlow<List<VoiceSpeechRun>>,
 )
 
 fun buildVoiceMqttEngine(
@@ -154,15 +159,18 @@ fun buildVoiceMqttEngine(
     val gate = BluetoothAudioGate(context)
     val stateFlow = MutableStateFlow(ConnectionState())
     val transport = PahoVoiceTransport(clientId = store.clientId, stateFlow = stateFlow)
+    val speechHistory = VoiceSpeechHistory(now = System::currentTimeMillis)
     val speaker = AndroidSpeechOutput(
         context = context,
         settings = { store.settings.value },
         gate = gate,
         micBusy = micBusy,
+        history = speechHistory,
         scope = scope,
     )
     return VoiceMqttEngine(
         controller = VoiceMqttController(store = store, transport = transport, speaker = speaker, scope = scope),
         gate = gate,
+        speechRuns = speaker.runs,
     )
 }

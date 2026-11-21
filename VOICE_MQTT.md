@@ -86,14 +86,37 @@ carries none of them forward.
 
 ## When a reply is spoken
 
-One rule, enforced where the sound would come out: **a reply is spoken only while a Bluetooth audio output is
-connected**, checked at the moment of speaking with `AudioManager.getDevices(GET_DEVICES_OUTPUTS)` filtered to
-`TYPE_BLUETOOTH_A2DP`, `TYPE_BLUETOOTH_SCO` and `TYPE_BLE_HEADSET`. A paired-but-switched-off headset is not an
-output, so the phone's speaker does not take its place. There is no always-speak-without-a-headset mode: the
-Settings switch for it is on and has no off position.
+Two independent switches, both on by default and both the user's to change, applied where the sound would come
+out:
 
-The device picker narrows that to one already-paired Bluetooth audio device (default: any of them). Choosing a
-device does not make it speak when it is disconnected; it only says which connected device is acceptable.
+- **Speak the replies** — whether replies are spoken at all. Off means the loop never speaks: the reply still
+  arrives, and a later increment still writes it into the note. That silence is the user's own choice.
+- **Only play through a Bluetooth headset** — whether playback is restricted to Bluetooth. On, a Bluetooth
+  audio output must be connected *at the moment of speaking*, checked with
+  `AudioManager.getDevices(GET_DEVICES_OUTPUTS)` filtered to `TYPE_BLUETOOTH_A2DP`, `TYPE_BLUETOOTH_SCO` and
+  `TYPE_BLE_HEADSET`. A paired-but-switched-off headset is not an output, so the phone's speaker does not take
+  its place: the reply is suppressed and the reason is recorded. Off, a reply plays through whatever output is
+  active, the phone's speaker included.
+
+| speak replies | headset only | a Bluetooth output is connected | what happens |
+|---|---|---|---|
+| on | on | yes | the reply is spoken |
+| on | on | no | silent; the reason is logged and recorded |
+| on | off | yes | the reply is spoken |
+| on | off | no | the reply is spoken on the active output (the phone's speaker) |
+| off | either | either | nothing is spoken |
+
+The device picker narrows playback to one already-paired Bluetooth audio device (default: any of them), and it
+is only consulted while headset only is on. Choosing a device does not make it speak when it is disconnected;
+it only says which connected device is acceptable.
+
+A suppressed reply is a recorded fact, not a silence with no trace: one log line naming the reason and one entry
+in the speaker's run history, which the settings screen shows as "Last reply was not played: …". It is never
+read aloud as an error — there is usually nowhere to say it.
+
+An install from the first increment kept its behaviour across the change: that build stored a headset choice
+and no switch (it forced the switch on in code), so such a file reads back as *speak replies, headset only,
+that device*, and its old keys are removed on the next save.
 
 Two further rules:
 
@@ -161,6 +184,7 @@ protocol says not to build them into v1.
 1024-character and 8192-byte refusals), the five-minute session reset, the same-requestId retry inside ten
 minutes, reply pairing on `requestId` (a mismatched or empty one is ignored), and the turn as a whole against a
 fake transport (a retry carries the same requestId, a timeout is spoken, a blank transcript is refused with a
-sentence, an error reply never speaks its code).
+sentence, an error reply never speaks its code). The speaking matrix, the pinned device, the legacy-value
+migration and the paired-but-disconnected case are pure-Kotlin tests over the same task.
 
 The module's own test task is enough; nothing in it needs `adb`.

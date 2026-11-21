@@ -71,6 +71,7 @@ private class AndroidVoiceMqttSettings(private val engine: VoiceMqttEngine) : Vo
             gate = engine.gate,
             onSave = { controller.save(it) },
             onSendTest = { scope.launch { controller.sendTestMessage() } },
+            speechRuns = engine.speechRuns.collectAsState().value,
         )
     }
 }

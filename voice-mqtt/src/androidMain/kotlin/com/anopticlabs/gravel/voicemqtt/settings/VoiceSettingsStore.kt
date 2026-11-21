@@ -17,8 +17,8 @@ import java.util.UUID
  * this store logs no values at all, so an app log or a crash report cannot carry the password, and neither can
  * the settings file itself.
  *
- * [VoiceSettings.speakOnlyWithHeadset] is stored but has no OFF position — the operator's rule is that there
- * is no always-speak-without-a-headset mode — so it is read back as true whatever the file says.
+ * [VoiceSettings.speakReplies] and [VoiceSettings.headsetOnly] are independent switches with an OFF position
+ * each, stored like any other value and read back as the user left them: nothing here forces a value.
  */
 class VoiceSettingsStore(context: Context) {
 
@@ -38,7 +38,7 @@ class VoiceSettingsStore(context: Context) {
 
     /** Applies [transform] and stores the result; returns what was stored. */
     fun update(transform: (VoiceSettings) -> VoiceSettings): VoiceSettings {
-        val next = transform(_settings.value).copy(speakOnlyWithHeadset = true)
+        val next = transform(_settings.value)
         store(next)
         _settings.value = next
         return next
@@ -46,20 +46,23 @@ class VoiceSettingsStore(context: Context) {
 
     fun set(next: VoiceSettings): VoiceSettings = update { next }
 
-    private fun read(): VoiceSettings = VoiceSettings(
-        enabled = prefs.getBoolean(KEY_ENABLED, false),
-        host = prefs.getString(KEY_HOST, null) ?: DEFAULT_BROKER_HOST,
-        port = prefs.getInt(KEY_PORT, DEFAULT_BROKER_PORT),
-        tls = prefs.getBoolean(KEY_TLS, false),
-        trustSelfSigned = prefs.getBoolean(KEY_TRUST_SELF_SIGNED, false),
-        username = prefs.getString(KEY_USERNAME, "").orEmpty(),
-        password = secrets.open(prefs.getString(KEY_PASSWORD, null)).orEmpty(),
-        ingressTopic = prefs.getString(KEY_INGRESS, null) ?: DEFAULT_INGRESS_TOPIC,
-        egressTopic = prefs.getString(KEY_EGRESS, null) ?: DEFAULT_EGRESS_TOPIC,
-        speakOnlyWithHeadset = true,
-        headsetAddress = prefs.getString(KEY_HEADSET_ADDRESS, null),
-        headsetName = prefs.getString(KEY_HEADSET_NAME, null),
-    )
+    private fun read(): VoiceSettings {
+        val speaking = VoiceSpeakingSettings.read(prefs.all)
+        return VoiceSettings(
+            enabled = prefs.getBoolean(KEY_ENABLED, false),
+            host = prefs.getString(KEY_HOST, null) ?: DEFAULT_BROKER_HOST,
+            port = prefs.getInt(KEY_PORT, DEFAULT_BROKER_PORT),
+            tls = prefs.getBoolean(KEY_TLS, false),
+            trustSelfSigned = prefs.getBoolean(KEY_TRUST_SELF_SIGNED, false),
+            username = prefs.getString(KEY_USERNAME, "").orEmpty(),
+            password = secrets.open(prefs.getString(KEY_PASSWORD, null)).orEmpty(),
+            ingressTopic = prefs.getString(KEY_INGRESS, null) ?: DEFAULT_INGRESS_TOPIC,
+            egressTopic = prefs.getString(KEY_EGRESS, null) ?: DEFAULT_EGRESS_TOPIC,
+            speakReplies = speaking.speakReplies,
+            headsetOnly = speaking.headsetOnly,
+            preferredDevice = speaking.preferredDevice,
+        )
+    }
 
     private fun store(next: VoiceSettings) {
         val editor = prefs.edit()
@@ -71,8 +74,21 @@ class VoiceSettingsStore(context: Context) {
             .putString(KEY_USERNAME, next.username)
             .putString(KEY_INGRESS, next.ingressTopic)
             .putString(KEY_EGRESS, next.egressTopic)
-            .putString(KEY_HEADSET_ADDRESS, next.headsetAddress)
-            .putString(KEY_HEADSET_NAME, next.headsetName)
+            .putBoolean(VoiceSpeakingSettings.KEY_SPEAK_REPLIES, next.speakReplies)
+            .putBoolean(VoiceSpeakingSettings.KEY_HEADSET_ONLY, next.headsetOnly)
+        val preferred = next.preferredDevice
+        if (preferred == null) {
+            editor.remove(VoiceSpeakingSettings.KEY_PREFERRED_ADDRESS)
+                .remove(VoiceSpeakingSettings.KEY_PREFERRED_NAME)
+        } else {
+            editor.putString(VoiceSpeakingSettings.KEY_PREFERRED_ADDRESS, preferred.address)
+                .putString(VoiceSpeakingSettings.KEY_PREFERRED_NAME, preferred.name)
+        }
+        // The first increment's keys are migrated on read and gone after the first save, so a value it wrote
+        // can never come back over a choice the user has since changed.
+        editor.remove(VoiceSpeakingSettings.LEGACY_KEY_HEADSET_ADDRESS)
+            .remove(VoiceSpeakingSettings.LEGACY_KEY_HEADSET_NAME)
+            .remove(VoiceSpeakingSettings.LEGACY_KEY_SPEAK_ONLY_WITH_HEADSET)
         if (next.password.isEmpty()) {
             editor.remove(KEY_PASSWORD)
         } else {
@@ -102,7 +118,5 @@ class VoiceSettingsStore(context: Context) {
         const val KEY_PASSWORD = "password"
         const val KEY_INGRESS = "ingressTopic"
         const val KEY_EGRESS = "egressTopic"
-        const val KEY_HEADSET_ADDRESS = "headsetAddress"
-        const val KEY_HEADSET_NAME = "headsetName"
     }
 }

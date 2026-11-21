@@ -29,9 +29,12 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionPhase
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionState
+import com.anopticlabs.gravel.voicemqtt.settings.PreferredDevice
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceField
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
 import com.anopticlabs.gravel.voicemqtt.speech.BluetoothAudioGate
+import com.anopticlabs.gravel.voicemqtt.speech.PlaybackPolicy
+import com.anopticlabs.gravel.voicemqtt.speech.VoiceSpeechRun
 
 /** The picker's "no device in particular" choice. */
 private const val ANY_DEVICE = "Any Bluetooth device"
@@ -50,6 +53,7 @@ fun VoiceMqttSettingsContent(
     gate: BluetoothAudioGate,
     onSave: (VoiceSettings) -> Unit,
     onSendTest: () -> Unit,
+    speechRuns: List<VoiceSpeechRun> = emptyList(),
 ) {
     var draft by remember(settings) { mutableStateOf(settings) }
     var portText by remember(settings) { mutableStateOf(settings.port.toString()) }
@@ -175,26 +179,31 @@ fun VoiceMqttSettingsContent(
         )
 
         Text("Speaking", style = MaterialTheme.typography.titleMedium)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Speak only with a Bluetooth headset")
-                Text(
-                    "Always on. Replies are never spoken through the phone's speaker: a headset must be connected at the moment the answer arrives.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            // No OFF position: there is no always-speak-without-a-headset mode.
-            Switch(checked = true, onCheckedChange = null, enabled = false)
-        }
+        ToggleRow(
+            title = "Speak the replies",
+            description = "Off means nothing is played aloud. The answer still arrives and is still kept with the note.",
+            checked = draft.speakReplies,
+            onCheckedChange = { draft = draft.copy(speakReplies = it) },
+        )
+        ToggleRow(
+            title = "Only play through a Bluetooth headset",
+            description = "On means a headset must be connected at the moment the answer arrives. Off plays through " +
+                "whatever the phone is using, its own speaker included.",
+            checked = draft.headsetOnly,
+            onCheckedChange = { draft = draft.copy(headsetOnly = it) },
+        )
         Column {
-            TextButton(onClick = { pickerOpen = true }, enabled = canListDevices) {
-                Text("Replies play on: ${draft.headsetName ?: ANY_DEVICE}")
+            TextButton(
+                onClick = { pickerOpen = true },
+                enabled = canListDevices && draft.headsetOnly,
+            ) {
+                Text("Replies play on: ${draft.preferredDevice?.name ?: ANY_DEVICE}")
             }
             DropdownMenu(expanded = pickerOpen, onDismissRequest = { pickerOpen = false }) {
                 DropdownMenuItem(
                     text = { Text(ANY_DEVICE) },
                     onClick = {
-                        draft = draft.copy(headsetAddress = null, headsetName = null)
+                        draft = draft.copy(preferredDevice = null)
                         pickerOpen = false
                     },
                 )
@@ -202,18 +211,30 @@ fun VoiceMqttSettingsContent(
                     DropdownMenuItem(
                         text = { Text(device.name) },
                         onClick = {
-                            draft = draft.copy(headsetAddress = device.address, headsetName = device.name)
+                            draft = draft.copy(preferredDevice = PreferredDevice(device.address, device.name))
                             pickerOpen = false
                         },
                     )
                 }
             }
-            if (!canListDevices) {
+            if (!draft.headsetOnly) {
+                Text(
+                    "Only used when replies are restricted to Bluetooth.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else if (!canListDevices) {
                 Text(
                     "Allow the Nearby devices permission to choose one paired headset.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+        }
+        // The speaker's own record, so a reply that was held back is a fact on this screen and not a silence.
+        speechRuns.firstOrNull()?.suppression?.let { reason ->
+            Text(
+                "Last reply was not played: ${PlaybackPolicy.explanation(reason)}",
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
 
         Button(
