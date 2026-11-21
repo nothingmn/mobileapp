@@ -135,8 +135,9 @@ While a reply is being spoken the phone shows an ongoing notification that says 
 **Stop**.
 
 - **What it shows.** A title saying the reply is being spoken, and one line of the reply's own beginning —
-  the first ~80 characters, collapsed to a single line and ellipsised where it was cut. The app's notification
-  icon, on a low-importance channel named for speaking, silent, no timestamp, not dismissable while it is up.
+  the first ~80 characters, collapsed to a single line and ellipsised where it was cut. The module's own speaker
+  icon — the voice module borrows no drawable from another module — on a low-importance channel named for
+  speaking, silent, no timestamp, not dismissable while it is up.
 - **When it appears.** When an utterance actually begins — after the switch, the headset check and the voice
   check have all allowed it, and just as the engine is handed the sentence. A reply that is held back (spoken
   replies off, no Bluetooth output with headset only on, no offline voice, no usable voice) never posts it, and

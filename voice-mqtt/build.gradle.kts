@@ -78,9 +78,6 @@ kotlin {
             // takes only the notebook's interface, never its storage. The dependency runs one way on purpose —
             // :notebook must never learn that MQTT exists.
             implementation(project(":notebook"))
-            // The notification icon every other Gravel notification uses, so the speaking notice looks like the
-            // rest of the app's rather than like a launcher icon squashed into the status bar.
-            implementation(project(":util"))
             // Eclipse Paho's MQTT v3 client: plain JVM, Maven Central, no Android Service and no GMS.
             implementation(libs.paho.mqttv3)
         }

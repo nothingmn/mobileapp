@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The speaking notice's own small icon: a speaker throwing two sound waves, flat white on transparent.
+     Module-local on purpose — the voice module declares no dependency on :util, so it cannot borrow that
+     module's drawable, and a platform android.R.drawable icon would be a different glyph from the rest of
+     the app's notices. Android renders a small icon as a silhouette from this alpha channel and tints it
+     itself, so the fill colour is white and no tint is set here. Filled paths only, like :util's own icon:
+     a 24dp status-bar glyph has no room for a stroked outline. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- The speaker: a box under the cone, opening to the right, centred on y=12. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3.9,8.5 L7.4,8.5 L12.4,4.5 L12.4,19.5 L7.4,15.5 L3.9,15.5 Z" />
+    <!-- The near wave: a crescent between two arcs of the same centre, 1.4dp thick. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M16.66,8.68 A5.4,5.4 0 0 1 16.66,15.32 L15.55,14.46 A4,4 0 0 0 15.55,9.54 Z" />
+    <!-- The far wave. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M19.35,7.66 A8.2,8.2 0 0 1 19.35,16.34 L18.17,15.6 A6.8,6.8 0 0 0 18.17,8.4 Z" />
+</vector>

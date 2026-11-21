@@ -170,7 +170,7 @@ class SpeakingNoticeService : Service() {
         val open = packageManager.getLaunchIntentForPackage(packageName)
             ?.let { PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE) }
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(coredevices.util.R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_speaking_notice)
             .setContentTitle(copy.of(VoiceCopy(VoiceKeys.SPEAKING_TITLE)))
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
