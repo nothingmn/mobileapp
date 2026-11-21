@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  French (fr) for the Gravel voice loop, Canadian register where the word genuinely differs (jumelé rather than
+  appairé, téléphone rather than portable). Technical terms French has no settled word for stay in English —
+  broker, Bluetooth, Keystore, TLS, MQTT — rather than inventing one. The keys are identical to
+  values/strings.xml, one for one, and a test fails the build if they ever differ.
+-->
+<resources>
+
+    <!-- Paramètres > Assistant vocal -->
+    <string name="voice_section_connection">Connexion</string>
+    <string name="voice_status_connected">Connecté à %1$s</string>
+    <string name="voice_status_connecting">Connexion à %1$s…</string>
+    <string name="voice_status_disconnected">Non connecté</string>
+    <string name="voice_toggle_loop_title">Assistant vocal</string>
+    <string name="voice_toggle_loop_description">Publier chaque enregistrement transcrit et dire la réponse à voix haute</string>
+    <string name="voice_field_broker_address">Adresse du broker</string>
+    <string name="voice_field_port">Port</string>
+    <string name="voice_toggle_tls_title">Utiliser TLS</string>
+    <string name="voice_toggle_tls_description">Se connecter avec ssl:// plutôt qu\'avec tcp://</string>
+    <string name="voice_toggle_self_signed_title">Faire confiance à un certificat auto-signé</string>
+    <string name="voice_toggle_self_signed_description">Désactivé par défaut. Activé, accepte n\'importe quel certificat présenté par le broker : à réserver à un broker que vous exploitez vous-même.</string>
+    <string name="voice_section_credentials">Identifiants</string>
+    <string name="voice_field_username">Nom d\'utilisateur (facultatif)</string>
+    <string name="voice_field_password">Mot de passe (facultatif)</string>
+    <string name="voice_button_show">Afficher</string>
+    <string name="voice_button_hide">Masquer</string>
+    <string name="voice_field_password_note">Chiffré dans le stockage adossé au Keystore de ce téléphone.</string>
+    <string name="voice_section_topics">Sujets</string>
+    <string name="voice_field_ingress_topic">Sujet de la requête</string>
+    <string name="voice_hint_ingress_topic">Un seul sujet exact ; le serveur en tire l\'identité du client.</string>
+    <string name="voice_field_egress_topic">Filtre des sujets de réponse</string>
+    <string name="voice_hint_egress_topic">Un joker est attendu ici : la dernière partie du sujet de réponse appartient au serveur.</string>
+    <string name="voice_section_speaking">Lecture</string>
+    <string name="voice_toggle_speak_replies_title">Lire les réponses à voix haute</string>
+    <string name="voice_toggle_speak_replies_description">Désactivé, rien n\'est lu à voix haute. La réponse arrive quand même et reste jointe à la note.</string>
+    <string name="voice_toggle_headset_only_title">Lire uniquement dans un casque Bluetooth</string>
+    <string name="voice_toggle_headset_only_description">Activé, un casque doit être connecté au moment où la réponse arrive. Désactivé, la lecture passe par la sortie que le téléphone utilise, son propre haut-parleur compris.</string>
+    <string name="voice_picker_device_line">Lecture des réponses sur : %1$s</string>
+    <string name="voice_picker_any_device">N\'importe quel appareil Bluetooth</string>
+    <string name="voice_hint_device_headset_only">Utilisé seulement quand la lecture est limitée au Bluetooth.</string>
+    <string name="voice_hint_devices_permission">Accordez l\'autorisation Appareils à proximité pour choisir un casque jumelé.</string>
+    <string name="voice_speech_last_not_played">La dernière réponse n\'a pas été lue : %1$s</string>
+    <string name="voice_button_save_and_reconnect">Enregistrer et se reconnecter</string>
+    <string name="voice_action_test_sent">Message de test envoyé ; la réponse sera lue à son arrivée.</string>
+    <string name="voice_button_send_test">Envoyer un message de test</string>
+
+    <!-- Ce que la dernière réponse est devenue : classée dans une note, ou pourquoi pas. -->
+    <string name="voice_filing_appended">La dernière réponse a été classée dans « %1$s ».</string>
+    <string name="voice_filing_not_listed">La dernière réponse n\'a pas été classée : sa note n\'existe plus.</string>
+    <string name="voice_filing_archived">La dernière réponse n\'a pas été classée : sa note est dans les archives.</string>
+    <string name="voice_filing_changed_after_retry">La dernière réponse n\'a pas été classée : sa note a changé deux fois pendant le classement.</string>
+    <string name="voice_filing_empty_answer">La dernière réponse n\'a pas été classée : elle n\'avait aucun texte à conserver.</string>
+    <string name="voice_filing_storage_unavailable">La dernière réponse n\'a pas été classée : le stockage du carnet était inaccessible.</string>
+
+    <!-- Le moteur de synthèse, et le nom de rechange quand un appareil Bluetooth n'en donne pas. -->
+    <string name="voice_engine_start_failed">Le moteur de synthèse vocale n\'a pas pu démarrer, donc les réponses ne sont pas lues.</string>
+    <string name="voice_engine_init_failed">Le moteur de synthèse vocale n\'a pas démarré, donc les réponses ne sont pas lues.</string>
+    <string name="voice_engine_default">Le moteur par défaut du téléphone</string>
+    <string name="voice_engine_default_named">Le moteur par défaut du téléphone (%1$s)</string>
+    <string name="voice_device_unnamed">Appareil Bluetooth</string>
+
+    <!-- Pourquoi une phrase n'a pas été lue, en mots pour l'écran des paramètres. -->
+    <string name="voice_not_played_replies_off">Les réponses à voix haute sont désactivées, donc rien n\'a été lu.</string>
+    <string name="voice_not_played_no_bluetooth_output">Aucune sortie Bluetooth n\'était connectée, donc la réponse n\'a pas été lue.</string>
+    <string name="voice_not_played_device_not_connected">Le casque Bluetooth choisi n\'était pas connecté, donc la réponse n\'a pas été lue.</string>
+    <string name="voice_not_played_no_offline_voice">Aucune voix qui fonctionne hors ligne n\'est installée, donc la réponse n\'a pas été lue.</string>
+    <string name="voice_not_played_no_usable_voice">Le moteur de synthèse n\'avait aucune voix utilisable, donc la réponse n\'a pas été lue.</string>
+
+    <!-- Pourquoi aucune voix n'a pu parler, en mots pour l'écran des paramètres. -->
+    <string name="voice_refusal_no_voices">Le moteur de synthèse ne signale aucune voix, donc les réponses ne sont pas lues. Choisissez un autre moteur ci-dessous.</string>
+    <string name="voice_refusal_network_voices_only">Ce moteur n\'a que des voix qui exigent Internet, et la synthèse hors ligne est activée, donc les réponses ne sont pas lues. Choisissez un autre moteur ci-dessous, ou téléchargez une voix hors ligne dans les paramètres de synthèse vocale d\'Android.</string>
+    <string name="voice_refusal_no_offline_voice_for_language">Aucune voix hors ligne n\'est installée pour %1$s — téléchargez-en une dans les paramètres de synthèse vocale d\'Android.</string>
+    <string name="voice_refusal_no_voice_for_language">Ce moteur n\'a aucune voix pour %1$s, donc les réponses ne sont pas lues. Choisissez un autre moteur ci-dessous.</string>
+    <string name="voice_refusal_pinned_voice_network_only">La voix que vous avez choisie exige Internet et la synthèse hors ligne est activée, donc les réponses ne sont pas lues. Choisissez une voix hors ligne ci-dessous, ou désactivez la synthèse hors ligne.</string>
+    <string name="voice_refusal_voice_not_accepted">Le moteur de synthèse n\'a pas voulu utiliser sa voix, donc les réponses ne sont pas lues.</string>
+
+    <!-- Chaque phrase que la boucle dit à voix haute. -->
+    <string name="voice_spoken_failure">Je n\'ai pas pu joindre l\'assistant. Réessayez dans un instant.</string>
+    <string name="voice_spoken_timeout">L\'assistant n\'a pas répondu à temps. Réessayez.</string>
+    <string name="voice_spoken_not_connected">Je ne peux pas joindre le serveur de l\'assistant pour le moment. Réessayez quand il sera de retour.</string>
+    <string name="voice_spoken_busy">L\'assistant est occupé. Réessayez dans un instant.</string>
+    <string name="voice_spoken_empty_transcript">Je n\'ai rien entendu dans cet enregistrement, donc rien n\'a été envoyé.</string>
+    <string name="voice_spoken_too_long">Cet enregistrement était trop long à envoyer.</string>
+    <string name="voice_spoken_too_large">Cet enregistrement était trop volumineux à envoyer.</string>
+    <string name="voice_spoken_broken_request">Une erreur est survenue en construisant la requête, donc rien n\'a été envoyé.</string>
+    <string name="voice_spoken_test_message">Ceci est un message de test de l\'assistant vocal Gravel.</string>
+
+    <!-- Erreurs de champ, vérifiées avant que le bouton d'enregistrement soit offert. -->
+    <string name="voice_error_host_blank">Entrez l\'adresse du broker</string>
+    <string name="voice_error_host_space">Une adresse ne peut pas contenir d\'espace</string>
+    <string name="voice_error_port_range">Un port va de 1 à 65535</string>
+    <string name="voice_error_topic_blank">Entrez un sujet</string>
+    <string name="voice_error_topic_edge_space">Un sujet ne peut pas commencer ou finir par un espace</string>
+    <string name="voice_error_topic_edge_slash">Un sujet ne peut pas commencer ou finir par /</string>
+    <string name="voice_error_topic_empty_level">Un sujet ne peut pas avoir de niveau vide</string>
+    <string name="voice_error_topic_wildcard_forbidden">Le sujet de la requête doit être un seul sujet exact, sans + ni #</string>
+    <string name="voice_error_topic_wildcard_malformed"># doit être le dernier niveau et le remplir, et + doit remplir un niveau</string>
+    <string name="voice_error_topic_space">Un sujet ne peut pas contenir d\'espace</string>
+
+    <!-- Les échecs de connexion, affichés sous la ligne d'état. Aucun identifiant n'y figure jamais. -->
+    <string name="voice_connection_ended">La connexion a pris fin.</string>
+    <string name="voice_connection_auth_refused">Le broker a refusé les identifiants.</string>
+    <string name="voice_connection_no_answer">Rien n\'a répondu à cette adresse et à ce port.</string>
+    <string name="voice_connection_broker_unavailable">Le broker n\'accepte pas de connexions.</string>
+    <string name="voice_connection_unreachable_code">Le broker est injoignable (code %1$s).</string>
+    <string name="voice_connection_unreachable">Le broker est injoignable.</string>
+
+</resources>

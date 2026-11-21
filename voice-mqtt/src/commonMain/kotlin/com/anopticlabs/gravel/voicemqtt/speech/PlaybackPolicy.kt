@@ -1,6 +1,8 @@
 package com.anopticlabs.gravel.voicemqtt.speech
 
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceCopy
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceKeys
 
 /**
  * One audio output connected at the moment of speaking, in the terms the policy needs: whether it is a
@@ -80,15 +82,15 @@ object PlaybackPolicy {
         SpeechSuppression.NO_USABLE_VOICE -> "reply not spoken: the engine has no voice it can use for this language"
     }
 
-    /** The sentence the settings screen shows under the switches, in plain language. */
-    fun explanation(reason: SpeechSuppression): String = when (reason) {
-        SpeechSuppression.REPLIES_OFF -> "Spoken replies are off, so nothing was played."
-        SpeechSuppression.NO_BLUETOOTH_OUTPUT -> "No Bluetooth output was connected, so the reply was not played."
-        SpeechSuppression.PREFERRED_DEVICE_NOT_CONNECTED ->
-            "Your chosen Bluetooth device was not connected, so the reply was not played."
-        SpeechSuppression.NO_OFFLINE_VOICE ->
-            "No voice that works offline is installed, so the reply was not played."
-        SpeechSuppression.NO_USABLE_VOICE ->
-            "The speech engine had no voice it could use, so the reply was not played."
+    /**
+     * The sentence the settings screen shows under the switches, in plain language. Returned as copy rather than
+     * text: this object stays pure, and the screen resolves the key in the phone's language.
+     */
+    fun explanation(reason: SpeechSuppression): VoiceCopy = when (reason) {
+        SpeechSuppression.REPLIES_OFF -> VoiceCopy(VoiceKeys.NOT_PLAYED_REPLIES_OFF)
+        SpeechSuppression.NO_BLUETOOTH_OUTPUT -> VoiceCopy(VoiceKeys.NOT_PLAYED_NO_BLUETOOTH_OUTPUT)
+        SpeechSuppression.PREFERRED_DEVICE_NOT_CONNECTED -> VoiceCopy(VoiceKeys.NOT_PLAYED_DEVICE_NOT_CONNECTED)
+        SpeechSuppression.NO_OFFLINE_VOICE -> VoiceCopy(VoiceKeys.NOT_PLAYED_NO_OFFLINE_VOICE)
+        SpeechSuppression.NO_USABLE_VOICE -> VoiceCopy(VoiceKeys.NOT_PLAYED_NO_USABLE_VOICE)
     }
 }

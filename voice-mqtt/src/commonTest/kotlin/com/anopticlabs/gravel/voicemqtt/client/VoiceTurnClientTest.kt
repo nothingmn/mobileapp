@@ -83,6 +83,9 @@ class VoiceTurnClientTest {
         replies = VoiceReplyHandler(now = { clock }),
         scope = scope,
         now = { clock },
+        // The resolver the phone has is its resources; here the key stands for the sentence, so an assertion
+        // names the copy that was said instead of an English literal.
+        copy = { it.key },
         replyTimeoutMillis = 60_000L,
     )
 
@@ -120,7 +123,7 @@ class VoiceTurnClientTest {
         client(backgroundScope, transport, speaker).publishTranscript("anyone there")
 
         assertTrue(transport.published.isEmpty())
-        assertEquals(listOf(VoiceLoopSentences.NOT_CONNECTED), speaker.spoken)
+        assertEquals(listOf(VoiceLoopSentences.NOT_CONNECTED.key), speaker.spoken)
     }
 
     @Test
@@ -133,7 +136,7 @@ class VoiceTurnClientTest {
         advanceTimeBy(59_000L)
         assertTrue(speaker.spoken.isEmpty())
         advanceTimeBy(2_000L)
-        assertEquals(listOf(VoiceLoopSentences.TIMEOUT), speaker.spoken, "silence is the failure mode this prevents")
+        assertEquals(listOf(VoiceLoopSentences.TIMEOUT.key), speaker.spoken, "silence is the failure mode this prevents")
     }
 
     @Test
@@ -158,7 +161,7 @@ class VoiceTurnClientTest {
         client(backgroundScope, transport, speaker).publishTranscript("   ")
 
         assertTrue(transport.published.isEmpty())
-        assertEquals(listOf(VoiceLoopSentences.EMPTY_TRANSCRIPT), speaker.spoken)
+        assertEquals(listOf(VoiceLoopSentences.EMPTY_TRANSCRIPT.key), speaker.spoken)
     }
 
     @Test
@@ -168,7 +171,7 @@ class VoiceTurnClientTest {
         client(backgroundScope, transport, speaker).publishTranscript("a".repeat(2000))
 
         assertTrue(transport.published.isEmpty())
-        assertEquals(listOf(VoiceLoopSentences.TOO_LONG), speaker.spoken)
+        assertEquals(listOf(VoiceLoopSentences.TOO_LONG.key), speaker.spoken)
     }
 
     @Test
@@ -183,7 +186,7 @@ class VoiceTurnClientTest {
             """{"version":1,"status":"error","sessionId":"s","requestId":"$ours","correlationId":"c","text":"invalid_request","format":"plain"}"""
                 .encodeToByteArray(),
         )
-        assertEquals(listOf(VoiceLoopSentences.FAILURE), speaker.spoken)
+        assertEquals(listOf(VoiceLoopSentences.FAILURE.key), speaker.spoken)
         assertFalse(speaker.spoken.any { it.contains("invalid_request") }, "the opaque code is never spoken")
     }
 

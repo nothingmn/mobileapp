@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Gravel voice loop: every string this feature shows or says. Keys are prefixed voice_ so the whole feature's
+  copy reads as one block in a resource file. values-fr/strings.xml holds the same keys in French; a test
+  (VoiceCopyKeysTest) fails the build when the two files disagree.
+  Log tags, log lines, MQTT topics and protocol constants are deliberately not here: they are developer text.
+-->
+<resources>
+
+    <!-- Settings > Voice Assistant -->
+    <string name="voice_section_connection">Connection</string>
+    <string name="voice_status_connected">Connected to %1$s</string>
+    <string name="voice_status_connecting">Connecting to %1$s…</string>
+    <string name="voice_status_disconnected">Not connected</string>
+    <string name="voice_toggle_loop_title">Voice assistant</string>
+    <string name="voice_toggle_loop_description">Publish every transcribed recording and speak the answer</string>
+    <string name="voice_field_broker_address">Broker address</string>
+    <string name="voice_field_port">Port</string>
+    <string name="voice_toggle_tls_title">Use TLS</string>
+    <string name="voice_toggle_tls_description">Connect with ssl:// instead of tcp://</string>
+    <string name="voice_toggle_self_signed_title">Trust a self-signed certificate</string>
+    <string name="voice_toggle_self_signed_description">Off by default. On accepts any certificate the broker presents, so only use it for a broker you run yourself.</string>
+    <string name="voice_section_credentials">Credentials</string>
+    <string name="voice_field_username">Username (optional)</string>
+    <string name="voice_field_password">Password (optional)</string>
+    <string name="voice_button_show">Show</string>
+    <string name="voice_button_hide">Hide</string>
+    <string name="voice_field_password_note">Kept encrypted in this phone\'s Keystore-backed storage.</string>
+    <string name="voice_section_topics">Topics</string>
+    <string name="voice_field_ingress_topic">Request topic</string>
+    <string name="voice_hint_ingress_topic">One exact topic; the server takes the client\'s identity from it.</string>
+    <string name="voice_field_egress_topic">Reply topic filter</string>
+    <string name="voice_hint_egress_topic">A wildcard is expected here: the reply topic\'s last part is the server\'s.</string>
+    <string name="voice_section_speaking">Speaking</string>
+    <string name="voice_toggle_speak_replies_title">Speak the replies</string>
+    <string name="voice_toggle_speak_replies_description">Off means nothing is played aloud. The answer still arrives and is still kept with the note.</string>
+    <string name="voice_toggle_headset_only_title">Only play through a Bluetooth headset</string>
+    <string name="voice_toggle_headset_only_description">On means a headset must be connected at the moment the answer arrives. Off plays through whatever the phone is using, its own speaker included.</string>
+    <string name="voice_picker_device_line">Replies play on: %1$s</string>
+    <string name="voice_picker_any_device">Any Bluetooth device</string>
+    <string name="voice_hint_device_headset_only">Only used when replies are restricted to Bluetooth.</string>
+    <string name="voice_hint_devices_permission">Allow the Nearby devices permission to choose one paired headset.</string>
+    <string name="voice_speech_last_not_played">Last reply was not played: %1$s</string>
+    <string name="voice_button_save_and_reconnect">Save and reconnect</string>
+    <string name="voice_action_test_sent">Test message sent; the answer is spoken when it arrives.</string>
+    <string name="voice_button_send_test">Send test message</string>
+
+    <!-- What became of the last answer: filed into a note, or why it was not. -->
+    <string name="voice_filing_appended">Last reply was filed into “%1$s”.</string>
+    <string name="voice_filing_not_listed">Last reply was not filed: its note is gone.</string>
+    <string name="voice_filing_archived">Last reply was not filed: its note is in the archive.</string>
+    <string name="voice_filing_changed_after_retry">Last reply was not filed: its note changed twice while it was being filed.</string>
+    <string name="voice_filing_empty_answer">Last reply was not filed: it had no text to keep.</string>
+    <string name="voice_filing_storage_unavailable">Last reply was not filed: the notebook\'s storage was unavailable.</string>
+
+    <!-- The speech engine and the Bluetooth name it may have to stand in for. -->
+    <string name="voice_engine_start_failed">The speech engine could not be started, so replies are not played.</string>
+    <string name="voice_engine_init_failed">The speech engine did not start, so replies are not played.</string>
+    <string name="voice_engine_default">The phone\'s default engine</string>
+    <string name="voice_engine_default_named">The phone\'s default engine (%1$s)</string>
+    <string name="voice_device_unnamed">Bluetooth device</string>
+
+    <!-- Why a sentence was held back, in words for the settings screen. -->
+    <string name="voice_not_played_replies_off">Spoken replies are off, so nothing was played.</string>
+    <string name="voice_not_played_no_bluetooth_output">No Bluetooth output was connected, so the reply was not played.</string>
+    <string name="voice_not_played_device_not_connected">Your chosen Bluetooth device was not connected, so the reply was not played.</string>
+    <string name="voice_not_played_no_offline_voice">No voice that works offline is installed, so the reply was not played.</string>
+    <string name="voice_not_played_no_usable_voice">The speech engine had no voice it could use, so the reply was not played.</string>
+
+    <!-- Why no voice could speak at all, in words for the settings screen. -->
+    <string name="voice_refusal_no_voices">The speech engine reports no voices, so replies are not played. Choose another engine below.</string>
+    <string name="voice_refusal_network_voices_only">This engine only has voices that need the internet, and offline speech is on, so replies are not played. Choose another engine below, or download an offline voice in Android\'s text-to-speech settings.</string>
+    <string name="voice_refusal_no_offline_voice_for_language">No offline voice is installed for %1$s — download one in Android\'s text-to-speech settings.</string>
+    <string name="voice_refusal_no_voice_for_language">This engine has no voice for %1$s at all, so replies are not played. Choose another engine below.</string>
+    <string name="voice_refusal_pinned_voice_network_only">The voice you chose needs the internet and offline speech is on, so replies are not played. Pick an offline voice below, or turn offline speech off.</string>
+    <string name="voice_refusal_voice_not_accepted">The speech engine would not use its voice, so replies are not played.</string>
+
+    <!-- Every sentence the loop says aloud. One format argument at most, so a translation may reorder it. -->
+    <string name="voice_spoken_failure">I couldn\'t reach the assistant. Please try again in a moment.</string>
+    <string name="voice_spoken_timeout">The assistant didn\'t answer in time. Please try again.</string>
+    <string name="voice_spoken_not_connected">I can\'t reach the assistant\'s server right now. Please try again when it is back.</string>
+    <string name="voice_spoken_busy">The assistant is busy. Please try again in a moment.</string>
+    <string name="voice_spoken_empty_transcript">I couldn\'t hear anything in that recording, so nothing was sent.</string>
+    <string name="voice_spoken_too_long">That recording was too long to send.</string>
+    <string name="voice_spoken_too_large">That recording was too large to send.</string>
+    <string name="voice_spoken_broken_request">Something went wrong building that request, so nothing was sent.</string>
+    <string name="voice_spoken_test_message">This is a test message from the Gravel voice assistant.</string>
+
+    <!-- Inline field errors, checked before the save button is offered. -->
+    <string name="voice_error_host_blank">Enter the broker\'s address</string>
+    <string name="voice_error_host_space">An address cannot contain a space</string>
+    <string name="voice_error_port_range">A port is between 1 and 65535</string>
+    <string name="voice_error_topic_blank">Enter a topic</string>
+    <string name="voice_error_topic_edge_space">A topic cannot start or end with a space</string>
+    <string name="voice_error_topic_edge_slash">A topic cannot start or end with /</string>
+    <string name="voice_error_topic_empty_level">A topic cannot have an empty level</string>
+    <string name="voice_error_topic_wildcard_forbidden">The request topic must be one exact topic, without + or #</string>
+    <string name="voice_error_topic_wildcard_malformed"># must be the last level and fill it, and + must fill a level</string>
+    <string name="voice_error_topic_space">A topic cannot contain a space</string>
+
+    <!-- The connection's own failures, shown under the state line. No credential is ever part of one. -->
+    <string name="voice_connection_ended">The connection ended.</string>
+    <string name="voice_connection_auth_refused">The broker refused the credentials.</string>
+    <string name="voice_connection_no_answer">Nothing answered at that address and port.</string>
+    <string name="voice_connection_broker_unavailable">The broker is not accepting connections.</string>
+    <string name="voice_connection_unreachable_code">The broker could not be reached (code %1$s).</string>
+    <string name="voice_connection_unreachable">The broker could not be reached.</string>
+
+</resources>

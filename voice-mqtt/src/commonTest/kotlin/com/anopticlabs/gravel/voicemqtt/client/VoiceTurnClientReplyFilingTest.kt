@@ -73,6 +73,7 @@ class VoiceTurnClientReplyFilingTest {
         replies = VoiceReplyHandler(now = { clock }),
         scope = scope,
         now = { clock },
+        copy = { it.key },
         replyTimeoutMillis = 60_000L,
         onAnswer = { requestId, text -> filed += "$requestId:$text" },
     )

@@ -24,10 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import coredevices.pebble.ui.TopBarParams
 
-/** The pickers' "let the phone choose" choices. */
-private const val PHONE_DEFAULT_ENGINE = "The phone's default engine"
-private const val BEST_VOICE = "Best voice for the phone's language"
-
 /**
  * Settings > AI > Text to Speech: which engine speaks the replies, which voice inside it, and whether the
  * replies may leave the phone at all.
@@ -36,6 +32,9 @@ private const val BEST_VOICE = "Best voice for the phone's language"
  * wherever the settings are drawn, and the honesty it carries is testable as plain values: the "Offline
  * speech" switch says what it does, the cloud sentence appears in full whenever the switch is off, and a phone
  * with no usable voice says so instead of going quiet.
+ *
+ * Every word comes from this feature's own Compose resources (see [TextToSpeechKeys]), in the phone's language;
+ * the rest of this app's settings screens are English-only and deliberately out of scope.
  */
 @Composable
 fun TextToSpeechScreen(
@@ -46,15 +45,19 @@ fun TextToSpeechScreen(
     onOfflineOnly: (Boolean) -> Unit,
     onRefresh: () -> Unit,
 ) {
+    val title = stringResourceFor(TextToSpeechKeys.TTS_TITLE)
     LaunchedEffect(Unit) {
         topBarParams.searchAvailable(null)
-        topBarParams.title("Text to Speech")
+        topBarParams.title(title)
         topBarParams.actions { }
     }
     LaunchedEffect(facts.read) { if (!facts.read) onRefresh() }
 
     var enginePickerOpen by remember { mutableStateOf(false) }
     var voicePickerOpen by remember { mutableStateOf(false) }
+    // The two pickers' "let the phone choose" choices.
+    val phoneDefaultEngine = stringResourceFor(TextToSpeechKeys.ENGINE_DEFAULT)
+    val bestVoice = stringResourceFor(TextToSpeechKeys.BEST_VOICE)
 
     Column(
         modifier = Modifier
@@ -63,21 +66,21 @@ fun TextToSpeechScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Speaking", style = MaterialTheme.typography.titleMedium)
+        Text(stringResourceFor(TextToSpeechKeys.SECTION_SPEAKING), style = MaterialTheme.typography.titleMedium)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(OFFLINE_SPEECH_TITLE)
-                Text(OFFLINE_SPEECH_SUBTITLE, style = MaterialTheme.typography.bodySmall)
+                Text(OFFLINE_SPEECH_TITLE.text())
+                Text(OFFLINE_SPEECH_SUBTITLE.text(), style = MaterialTheme.typography.bodySmall)
             }
             Switch(checked = facts.offlineOnly, onCheckedChange = onOfflineOnly)
         }
         cloudSpeechNote(facts.offlineOnly)?.let { note ->
-            Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            Text(note.text(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
 
-        Text("Engine", style = MaterialTheme.typography.titleMedium)
+        Text(stringResourceFor(TextToSpeechKeys.SECTION_ENGINE), style = MaterialTheme.typography.titleMedium)
         Text(
-            "Installed engines on this phone. Changing one takes effect without restarting the app.",
+            stringResourceFor(TextToSpeechKeys.ENGINE_INTRO),
             style = MaterialTheme.typography.bodySmall,
         )
         Column {
@@ -85,11 +88,11 @@ fun TextToSpeechScreen(
                 onClick = { enginePickerOpen = true },
                 enabled = facts.engines.isNotEmpty(),
             ) {
-                Text(facts.engineLabel.takeIf { it.isNotBlank() } ?: PHONE_DEFAULT_ENGINE)
+                Text(facts.engineLabel.takeIf { it.isNotBlank() } ?: phoneDefaultEngine)
             }
             DropdownMenu(expanded = enginePickerOpen, onDismissRequest = { enginePickerOpen = false }) {
                 DropdownMenuItem(
-                    text = { Text(PHONE_DEFAULT_ENGINE) },
+                    text = { Text(phoneDefaultEngine) },
                     onClick = {
                         enginePickerOpen = false
                         onEngine(null)
@@ -97,7 +100,15 @@ fun TextToSpeechScreen(
                 )
                 facts.engines.forEach { engine ->
                     DropdownMenuItem(
-                        text = { Text(if (engine.isSystemDefault) "${engine.label} (phone default)" else engine.label) },
+                        text = {
+                            Text(
+                                if (engine.isSystemDefault) {
+                                    stringResourceFor(TextToSpeechKeys.ENGINE_DEFAULT_MARKED, engine.label)
+                                } else {
+                                    engine.label
+                                },
+                            )
+                        },
                         onClick = {
                             enginePickerOpen = false
                             onEngine(engine.name)
@@ -107,23 +118,23 @@ fun TextToSpeechScreen(
             }
             if (facts.read && facts.engines.isEmpty()) {
                 Text(
-                    "No text-to-speech engine is installed on this phone.",
+                    stringResourceFor(TextToSpeechKeys.NO_ENGINE_INSTALLED),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
         }
 
-        Text("Voice", style = MaterialTheme.typography.titleMedium)
+        Text(stringResourceFor(TextToSpeechKeys.SECTION_VOICE), style = MaterialTheme.typography.titleMedium)
         Column {
             TextButton(
                 onClick = { voicePickerOpen = true },
                 enabled = facts.selectableVoices.isNotEmpty(),
             ) {
-                Text(facts.voice ?: BEST_VOICE)
+                Text(facts.voice ?: bestVoice)
             }
             DropdownMenu(expanded = voicePickerOpen, onDismissRequest = { voicePickerOpen = false }) {
                 DropdownMenuItem(
-                    text = { Text(BEST_VOICE) },
+                    text = { Text(bestVoice) },
                     onClick = {
                         voicePickerOpen = false
                         onVoice(null)
@@ -132,7 +143,13 @@ fun TextToSpeechScreen(
                 facts.selectableVoices.forEach { voice ->
                     DropdownMenuItem(
                         text = {
-                            Text(if (voice.offline) "${voice.label} — on this phone" else "${voice.label} — cloud")
+                            Text(
+                                if (voice.offline) {
+                                    stringResourceFor(TextToSpeechKeys.VOICE_ON_PHONE, voice.label)
+                                } else {
+                                    stringResourceFor(TextToSpeechKeys.VOICE_CLOUD, voice.label)
+                                },
+                            )
                         },
                         onClick = {
                             voicePickerOpen = false
@@ -144,13 +161,13 @@ fun TextToSpeechScreen(
         }
 
         speechInUseLine(facts)?.let { line ->
-            Text(line, style = MaterialTheme.typography.bodySmall)
+            Text(line.text(), style = MaterialTheme.typography.bodySmall)
         }
         facts.problem?.let { problem ->
             Text(problem, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
         pinnedVoiceNote(facts)?.let { note ->
-            Text(note, style = MaterialTheme.typography.bodySmall)
+            Text(note.text(), style = MaterialTheme.typography.bodySmall)
         }
     }
 }

@@ -1,5 +1,8 @@
 package com.anopticlabs.gravel.voicemqtt.protocol
 
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceCopy
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceKeys
+
 /** The two topics the protocol names, as defaults only: every one of them is editable in Settings. */
 const val DEFAULT_INGRESS_TOPIC = "agentry/v1/gateway/req/voicessistant"
 const val DEFAULT_EGRESS_TOPIC = "agentry/v1/gateway/resp/voicessistant/#"
@@ -7,6 +10,9 @@ const val DEFAULT_EGRESS_TOPIC = "agentry/v1/gateway/resp/voicessistant/#"
 /**
  * Topic shape rules, checked when the user saves rather than when the client connects, so a typo is an
  * inline error on the field instead of a client that silently receives nothing.
+ *
+ * A refusal is copy, not text: the rule is pure Kotlin proved by the host tests, and the screen resolves the key
+ * in the phone's language.
  */
 object VoiceTopics {
 
@@ -15,19 +21,19 @@ object VoiceTopics {
      * route's name is the client's whole authority, so a wildcard there addresses nobody), while the reply
      * filter is expected to carry `#`: the reply topic's last segment is server-minted.
      */
-    fun refusal(topic: String, allowWildcard: Boolean): String? {
+    fun refusal(topic: String, allowWildcard: Boolean): VoiceCopy? {
         val trimmed = topic.trim()
-        if (trimmed.isEmpty()) return "Enter a topic"
-        if (trimmed != topic) return "A topic cannot start or end with a space"
-        if (trimmed.startsWith("/") || trimmed.endsWith("/")) return "A topic cannot start or end with /"
-        if (trimmed.split('/').any { it.isEmpty() }) return "A topic cannot have an empty level"
+        if (trimmed.isEmpty()) return VoiceCopy(VoiceKeys.ERROR_TOPIC_BLANK)
+        if (trimmed != topic) return VoiceCopy(VoiceKeys.ERROR_TOPIC_EDGE_SPACE)
+        if (trimmed.startsWith("/") || trimmed.endsWith("/")) return VoiceCopy(VoiceKeys.ERROR_TOPIC_EDGE_SLASH)
+        if (trimmed.split('/').any { it.isEmpty() }) return VoiceCopy(VoiceKeys.ERROR_TOPIC_EMPTY_LEVEL)
         if (!allowWildcard && trimmed.any { it == '+' || it == '#' }) {
-            return "The request topic must be one exact topic, without + or #"
+            return VoiceCopy(VoiceKeys.ERROR_TOPIC_WILDCARD_FORBIDDEN)
         }
         if (allowWildcard && !wildcardsWellFormed(trimmed)) {
-            return "# must be the last level and fill it, and + must fill a level"
+            return VoiceCopy(VoiceKeys.ERROR_TOPIC_WILDCARD_MALFORMED)
         }
-        if (trimmed.any { it.isWhitespace() }) return "A topic cannot contain a space"
+        if (trimmed.any { it.isWhitespace() }) return VoiceCopy(VoiceKeys.ERROR_TOPIC_SPACE)
         return null
     }
 

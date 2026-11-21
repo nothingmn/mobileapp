@@ -173,25 +173,29 @@ class SettingsSectionsTest {
 
     @Test
     fun theSwitchIsNamedForWhatItDoesAndWarnsOnlyWhenItIsOff() {
-        assertEquals("Offline speech", OFFLINE_SPEECH_TITLE)
-        assertTrue(OFFLINE_SPEECH_SUBTITLE.contains("never send text to a server"))
+        // The words themselves live in composeResources/values/strings.xml and are asserted there, in both
+        // languages, by TextToSpeechCopyKeysTest; here the rule is held to the copy it means.
+        assertEquals(TextToSpeechKeys.OFFLINE_SPEECH_TITLE, OFFLINE_SPEECH_TITLE.key)
+        assertEquals(TextToSpeechKeys.OFFLINE_SPEECH_SUBTITLE, OFFLINE_SPEECH_SUBTITLE.key)
         assertEquals(null, cloudSpeechNote(offlineOnly = true), "nothing to warn about while it is on")
         val warning = cloudSpeechNote(offlineOnly = false)!!
-        assertTrue(warning.contains("cloud service"), warning)
-        assertTrue(warning.contains("leaves this phone"), warning)
+        assertEquals(TextToSpeechKeys.CLOUD_SPEECH_NOTE, warning.key, "the sentence that says the text leaves")
+        assertTrue(warning.args.isEmpty())
     }
 
     @Test
     fun theScreenSaysWhereTheWordsBecomeSoundInBothModes() {
         val voice = SpeechVoice("en-us-x-sfg#female_1-local", "en-US", offline = true)
         val inUse = TextToSpeechFacts(read = true, offlineOnly = true, voices = listOf(voice), inUse = voice)
-        assertTrue(speechInUseLine(inUse)!!.contains("synthesised on this phone"))
+        val said = speechInUseLine(inUse)!!
+        assertEquals(TextToSpeechKeys.SPEAKING_WITH_OFFLINE, said.key, "it says where the words become sound")
+        assertEquals(listOf(voice.label), said.args, "and which voice is speaking")
 
         val cloud = SpeechVoice("en-us-x-sfg#female_2-network", "en-US", offline = false)
         val cloudInUse = TextToSpeechFacts(offlineOnly = false, read = true, voices = listOf(voice, cloud), inUse = cloud)
         val line = speechInUseLine(cloudInUse)!!
-        assertTrue(line.contains("cloud service"), line)
-        assertTrue(line.contains("leaves this phone"), line)
+        assertEquals(TextToSpeechKeys.SPEAKING_WITH_CLOUD, line.key, "a cloud voice says the text leaves the phone")
+        assertEquals(listOf(cloud.label), line.args)
 
         // The picker offers only on-phone voices while offline speech is on, and both kinds when it is off.
         assertEquals(listOf(voice), cloudInUse.copy(offlineOnly = true, inUse = voice).selectableVoices)
@@ -206,7 +210,9 @@ class SettingsSectionsTest {
             languageLabel = "English",
             inUse = SpeechVoice("en-us-x-sfg#male_1-local", "en-US", offline = true),
         )
-        assertTrue(pinnedVoiceNote(pinned)!!.contains("English"))
+        val note = pinnedVoiceNote(pinned)!!
+        assertEquals(TextToSpeechKeys.PINNED_VOICE_GONE, note.key)
+        assertEquals(listOf("English"), note.args, "the note names the language the best voice stands in for")
 
         val nothing = TextToSpeechFacts(
             read = true,
@@ -214,6 +220,8 @@ class SettingsSectionsTest {
             problem = "No offline voice is installed for English — download one in Android's text-to-speech settings.",
         )
         assertEquals(null, nothing.inUse)
-        assertTrue(speechInUseLine(nothing)!!.contains("No offline voice is installed for English"))
+        val silence = speechInUseLine(nothing)!!
+        assertEquals(TextToSpeechKeys.NOTHING_SPOKEN, silence.key)
+        assertEquals(listOf(nothing.problem), silence.args, "the reason the screen already states is carried through")
     }
 }

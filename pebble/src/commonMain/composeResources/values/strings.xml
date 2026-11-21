@@ -9,4 +9,32 @@
     <string name="index">Index</string>
     <string name="health">Health</string>
     <string name="notebook">Notebook</string>
+
+    <!--
+      Gravel voice loop: Settings > AI > Text to Speech, and the AI section's item for it. Keys are prefixed
+      voice_ so the feature's copy reads as one block. values-fr/strings.xml holds the same keys in French and a
+      test (TextToSpeechCopyKeysTest) fails the build if the two disagree. The rest of this app's UI is
+      English-only and deliberately out of scope.
+    -->
+    <string name="voice_tts_title">Text to Speech</string>
+    <string name="voice_section_speaking">Speaking</string>
+    <string name="voice_offline_speech_title">Offline speech</string>
+    <string name="voice_offline_speech_subtitle">Local only — voices that never send text to a server</string>
+    <string name="voice_section_engine">Engine</string>
+    <string name="voice_engine_intro">Installed engines on this phone. Changing one takes effect without restarting the app.</string>
+    <string name="voice_engine_default">The phone's default engine</string>
+    <string name="voice_engine_default_marked">%1$s (phone default)</string>
+    <string name="voice_no_engine_installed">No text-to-speech engine is installed on this phone.</string>
+    <string name="voice_section_voice">Voice</string>
+    <string name="voice_best_voice">Best voice for the phone's language</string>
+    <string name="voice_voice_on_phone">%1$s — on this phone</string>
+    <string name="voice_voice_cloud">%1$s — cloud</string>
+    <string name="voice_cloud_speech_note">Replies are then synthesised by this engine's cloud service, so the text of every reply leaves this phone.</string>
+    <string name="voice_nothing_spoken">Nothing is spoken: %1$s</string>
+    <string name="voice_speaking_with_offline">Speaking with %1$s, synthesised on this phone.</string>
+    <string name="voice_speaking_with_cloud">Speaking with %1$s, synthesised by the engine's cloud service — the reply's text leaves this phone.</string>
+    <string name="voice_pinned_voice_gone">The voice you chose is not offered by this engine any more, so the best voice for %1$s is used instead.</string>
+    <string name="voice_pinned_voice_gone_this_language">The voice you chose is not offered by this engine any more, so the best voice for this language is used instead.</string>
+    <string name="voice_tts_item_title">Text to Speech</string>
+    <string name="voice_tts_item_description">The engine and voice that speak the assistant's replies, and offline speech</string>
 </resources>

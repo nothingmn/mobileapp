@@ -1,5 +1,8 @@
 package com.anopticlabs.gravel.voicemqtt.speech
 
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceCopy
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceKeys
+
 /**
  * One voice an engine offers, reduced to the four facts the rule needs.
  *
@@ -22,7 +25,7 @@ data class OfferedVoice(
     /** How the picker shows it: the language tag and the engine's own name for the voice. */
     val label: String get() = "$locale · $name"
 
-    /** Where the words become sound, in words the log and the settings screen can both use. */
+    /** Where the words become sound: developer text for the log line, never shown to the user. */
     val spokenWhere: String
         get() = if (networkRequired) "synthesised by the engine's cloud" else "synthesised on this phone"
 
@@ -136,22 +139,19 @@ object VoiceSelection {
     /**
      * The line the settings screen shows, in plain language, naming the problem and the language it is about.
      * [languageLabel] is the language's name as the phone says it (`English`), used only where it helps.
+     *
+     * Returned as [VoiceCopy] so the rule stays pure and the screen resolves it in the phone's language; the key's
+     * one argument is the language label where the sentence names one.
      */
-    fun explanation(reason: VoiceRefusal, languageLabel: String): String = when (reason) {
-        VoiceRefusal.NO_VOICES_OFFERED ->
-            "The speech engine reports no voices, so replies are not played. Choose another engine below."
-        VoiceRefusal.NETWORK_VOICES_ONLY ->
-            "This engine only has voices that need the internet, and offline speech is on, so replies are not " +
-                "played. Choose another engine below, or download an offline voice in Android's text-to-speech settings."
+    fun explanation(reason: VoiceRefusal, languageLabel: String): VoiceCopy = when (reason) {
+        VoiceRefusal.NO_VOICES_OFFERED -> VoiceCopy(VoiceKeys.REFUSAL_NO_VOICES)
+        VoiceRefusal.NETWORK_VOICES_ONLY -> VoiceCopy(VoiceKeys.REFUSAL_NETWORK_VOICES_ONLY)
         VoiceRefusal.NO_OFFLINE_VOICE_FOR_LANGUAGE ->
-            "No offline voice is installed for $languageLabel — download one in Android's text-to-speech settings."
+            VoiceCopy(VoiceKeys.REFUSAL_NO_OFFLINE_VOICE_FOR_LANGUAGE, languageLabel)
         VoiceRefusal.NO_VOICE_FOR_LANGUAGE ->
-            "This engine has no voice for $languageLabel at all, so replies are not played. Choose another engine below."
-        VoiceRefusal.PINNED_VOICE_IS_NETWORK_ONLY ->
-            "The voice you chose needs the internet and offline speech is on, so replies are not played. Pick an " +
-                "offline voice below, or turn offline speech off."
-        VoiceRefusal.VOICE_NOT_ACCEPTED ->
-            "The speech engine would not use its voice, so replies are not played."
+            VoiceCopy(VoiceKeys.REFUSAL_NO_VOICE_FOR_LANGUAGE, languageLabel)
+        VoiceRefusal.PINNED_VOICE_IS_NETWORK_ONLY -> VoiceCopy(VoiceKeys.REFUSAL_PINNED_VOICE_NETWORK_ONLY)
+        VoiceRefusal.VOICE_NOT_ACCEPTED -> VoiceCopy(VoiceKeys.REFUSAL_VOICE_NOT_ACCEPTED)
     }
 
     /** The line written to the log when a sentence is held back because no usable voice was found. */

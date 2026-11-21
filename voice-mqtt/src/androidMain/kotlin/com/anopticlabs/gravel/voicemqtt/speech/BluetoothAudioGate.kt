@@ -11,6 +11,7 @@ import android.media.AudioManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.voicemqtt.R
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
 
 /** One already-paired Bluetooth audio device, as the picker shows it. */
@@ -92,10 +93,13 @@ class BluetoothAudioGate(private val context: Context) {
     }
 
     private fun BluetoothDevice.namedOrNull(): String = try {
-        name?.takeIf { it.isNotBlank() } ?: addressOrNull() ?: "Bluetooth device"
+        name?.takeIf { it.isNotBlank() } ?: addressOrNull() ?: unnamedDevice()
     } catch (e: SecurityException) {
-        addressOrNull() ?: "Bluetooth device"
+        addressOrNull() ?: unnamedDevice()
     }
+
+    /** The picker's name for a device the platform will not name, in the phone's language. */
+    private fun unnamedDevice(): String = context.getString(R.string.voice_device_unnamed)
 
     private companion object {
         val logger = Logger.withTag("BluetoothAudioGate")

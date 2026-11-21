@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<resources>
+    <!--
+      French (fr) — the Gravel voice loop's own copy only. The rest of this screen's app is English-only and
+      deliberately out of scope, so its strings are absent here and fall back to values/strings.xml. Only this
+      feature's voice_* keys are translated.
+      Canadian register where the word differs from France French (infonuagique rather than cloud, téléphone
+      rather than portable). Where French has no settled word for a technical term — MQTT, Bluetooth, TLS,
+      Keystore — the term stays as it is. A test fails the build if this file and values/strings.xml disagree
+      about the voice_* keys.
+    -->
+    <string name="voice_tts_title">Synthèse vocale</string>
+    <string name="voice_section_speaking">Lecture</string>
+    <string name="voice_offline_speech_title">Synthèse hors ligne</string>
+    <string name="voice_offline_speech_subtitle">Local seulement — des voix qui n'envoient jamais de texte à un serveur</string>
+    <string name="voice_section_engine">Moteur</string>
+    <string name="voice_engine_intro">Moteurs installés sur ce téléphone. Un changement prend effet sans redémarrer l'application.</string>
+    <string name="voice_engine_default">Le moteur par défaut du téléphone</string>
+    <string name="voice_engine_default_marked">%1$s (par défaut sur le téléphone)</string>
+    <string name="voice_no_engine_installed">Aucun moteur de synthèse vocale n'est installé sur ce téléphone.</string>
+    <string name="voice_section_voice">Voix</string>
+    <string name="voice_best_voice">Meilleure voix pour la langue du téléphone</string>
+    <string name="voice_voice_on_phone">%1$s — sur ce téléphone</string>
+    <string name="voice_voice_cloud">%1$s — infonuagique</string>
+    <string name="voice_cloud_speech_note">Les réponses sont alors synthétisées par le service infonuagique de ce moteur, donc le texte de chaque réponse quitte ce téléphone.</string>
+    <string name="voice_nothing_spoken">Rien n'est lu : %1$s</string>
+    <string name="voice_speaking_with_offline">Lecture avec %1$s, synthèse sur ce téléphone.</string>
+    <string name="voice_speaking_with_cloud">Lecture avec %1$s, synthèse par le service infonuagique du moteur — le texte de la réponse quitte ce téléphone.</string>
+    <string name="voice_pinned_voice_gone">La voix que vous avez choisie n'est plus offerte par ce moteur, donc la meilleure voix pour %1$s est utilisée à la place.</string>
+    <string name="voice_pinned_voice_gone_this_language">La voix que vous avez choisie n'est plus offerte par ce moteur, donc la meilleure voix pour cette langue est utilisée à la place.</string>
+    <string name="voice_tts_item_title">Synthèse vocale</string>
+    <string name="voice_tts_item_description">Le moteur et la voix qui lisent les réponses de l'assistant, et la synthèse hors ligne</string>
+</resources>

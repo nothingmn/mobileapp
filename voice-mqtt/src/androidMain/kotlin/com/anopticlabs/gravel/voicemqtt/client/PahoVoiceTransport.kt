@@ -1,6 +1,9 @@
 package com.anopticlabs.gravel.voicemqtt.client
 
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceCopy
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceKeys
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceText
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +46,8 @@ import javax.net.ssl.X509TrustManager
 class PahoVoiceTransport(
     private val clientId: String,
     private val stateFlow: MutableStateFlow<ConnectionState>,
+    /** The phone's copy: the failure reasons below are shown under the state line, in the phone's language. */
+    private val text: VoiceText,
     private val publishTimeoutMillis: Long = 10_000L,
 ) : VoiceTransport {
 
@@ -184,18 +189,19 @@ class PahoVoiceTransport(
 
     /** Never includes a credential: the settings' host and port, and the failure's own reason. */
     private fun describe(e: Throwable?): String = when (e) {
-        null -> "the connection ended"
+        null -> text.of(VoiceCopy(VoiceKeys.CONNECTION_ENDED))
         is MqttException -> when (e.reasonCode) {
             MqttException.REASON_CODE_FAILED_AUTHENTICATION.toInt(),
             MqttException.REASON_CODE_NOT_AUTHORIZED.toInt(),
-            -> "the broker refused the credentials"
+            -> text.of(VoiceCopy(VoiceKeys.CONNECTION_AUTH_REFUSED))
             MqttException.REASON_CODE_SERVER_CONNECT_ERROR.toInt() ->
-                "nothing answered at that address and port"
+                text.of(VoiceCopy(VoiceKeys.CONNECTION_NO_ANSWER))
             MqttException.REASON_CODE_BROKER_UNAVAILABLE.toInt() ->
-                "the broker is not accepting connections"
-            else -> "the broker could not be reached (${e.reasonCode})"
+                text.of(VoiceCopy(VoiceKeys.CONNECTION_BROKER_UNAVAILABLE))
+            else -> text.of(VoiceCopy(VoiceKeys.CONNECTION_UNREACHABLE_CODE, e.reasonCode.toString()))
         }
-        else -> e.message?.take(160) ?: "the broker could not be reached"
+        // The library's own message is developer text, so it passes through; only the fallback is ours.
+        else -> e.message?.take(160) ?: text.of(VoiceCopy(VoiceKeys.CONNECTION_UNREACHABLE))
     }
 
     private companion object {

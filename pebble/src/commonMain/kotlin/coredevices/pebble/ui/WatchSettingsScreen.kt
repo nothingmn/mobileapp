@@ -120,8 +120,10 @@ import com.anopticlabs.gravel.ui.phoneCalendarFirstStep
 import com.anopticlabs.gravel.ui.phoneCalendarRefusalText
 import com.anopticlabs.gravel.ui.rememberNotebookTab
 import com.anopticlabs.gravel.ui.rememberTextModels
+import com.anopticlabs.gravel.ui.TextToSpeechKeys
 import com.anopticlabs.gravel.ui.rememberTextToSpeechSettings
 import com.anopticlabs.gravel.ui.rememberVoiceMqttSettings
+import com.anopticlabs.gravel.ui.stringResourceFor
 import com.anopticlabs.gravel.ui.textModelsSummary
 import com.anopticlabs.gravel.ui.textToSpeechItemShown
 import com.anopticlabs.gravel.weather.WeatherConsentDialog
@@ -703,6 +705,12 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
         }
     }
 
+    // Gravel: the AI section's Text to Speech item. Its words are resolved here because the item list below is
+    // built inside a remember, where no composable lookup can run; the two strings are part of the key list so a
+    // language change cannot leave the old words in a cached list.
+    val ttsItemTitle = stringResourceFor(TextToSpeechKeys.TTS_ITEM_TITLE)
+    val ttsItemDescription = stringResourceFor(TextToSpeechKeys.TTS_ITEM_DESCRIPTION)
+
     val rawSettingsItems = remember(
             libPebbleConfig,
             debugOptionsEnabled,
@@ -725,6 +733,8 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
             hasOfflineModels,
             phoneHasModel,
             anyWatchSupportsFiveMinHrm,
+            ttsItemTitle,
+            ttsItemDescription,
         ) {
             listOfNotNull(
                 basicSettingsActionItem(
@@ -1985,8 +1995,8 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                 ttsSettings?.takeIf { textToSpeechItemShown(it.supported) }?.let {
                     navBarNav?.let { nav ->
                         basicSettingsActionItem(
-                            title = "Text to Speech",
-                            description = "The engine and voice that speak the assistant's replies, and offline speech",
+                            title = ttsItemTitle,
+                            description = ttsItemDescription,
                             topLevelType = TopLevelType.Phone,
                             section = Section.AI,
                             keywords = "text to speech tts voice engine offline local speaker",

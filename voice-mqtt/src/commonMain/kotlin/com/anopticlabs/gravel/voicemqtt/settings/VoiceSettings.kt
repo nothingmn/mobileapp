@@ -1,5 +1,7 @@
 package com.anopticlabs.gravel.voicemqtt.settings
 
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceCopy
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceKeys
 import com.anopticlabs.gravel.voicemqtt.protocol.DEFAULT_EGRESS_TOPIC
 import com.anopticlabs.gravel.voicemqtt.protocol.DEFAULT_INGRESS_TOPIC
 import com.anopticlabs.gravel.voicemqtt.protocol.VoiceTopics
@@ -60,11 +62,11 @@ data class VoiceSettings(
      */
     val offlineOnly: Boolean = true,
 ) {
-    /** Field-keyed inline errors; empty means the settings may be used. */
-    fun errors(): Map<VoiceField, String> = buildMap {
-        if (host.isBlank()) put(VoiceField.HOST, "Enter the broker's address")
-        else if (host.any { it.isWhitespace() }) put(VoiceField.HOST, "An address cannot contain a space")
-        if (port !in 1..65535) put(VoiceField.PORT, "A port is between 1 and 65535")
+    /** Field-keyed inline errors; empty means the settings may be used. Copy, resolved by the screen. */
+    fun errors(): Map<VoiceField, VoiceCopy> = buildMap {
+        if (host.isBlank()) put(VoiceField.HOST, VoiceCopy(VoiceKeys.ERROR_HOST_BLANK))
+        else if (host.any { it.isWhitespace() }) put(VoiceField.HOST, VoiceCopy(VoiceKeys.ERROR_HOST_SPACE))
+        if (port !in 1..65535) put(VoiceField.PORT, VoiceCopy(VoiceKeys.ERROR_PORT_RANGE))
         VoiceTopics.refusal(ingressTopic, allowWildcard = false)?.let { put(VoiceField.INGRESS_TOPIC, it) }
         VoiceTopics.refusal(egressTopic, allowWildcard = true)?.let { put(VoiceField.EGRESS_TOPIC, it) }
     }

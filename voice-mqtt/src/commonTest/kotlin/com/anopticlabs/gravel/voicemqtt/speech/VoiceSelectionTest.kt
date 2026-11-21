@@ -1,5 +1,7 @@
 package com.anopticlabs.gravel.voicemqtt.speech
 
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceCopy
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceKeys
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -29,9 +31,10 @@ class VoiceSelectionTest {
     fun aNetworkOnlyEngineIsRefusedRatherThanSendingTheReplyToTheCloud() {
         val choice = VoiceSelection.choose(listOf(cloud), language = "en")
         assertEquals(refuse(VoiceRefusal.NETWORK_VOICES_ONLY), choice)
-        assertTrue(
-            VoiceSelection.explanation(VoiceRefusal.NETWORK_VOICES_ONLY, "English").contains("need the internet"),
-            "the screen says why nothing is spoken",
+        assertEquals(
+            VoiceCopy(VoiceKeys.REFUSAL_NETWORK_VOICES_ONLY),
+            VoiceSelection.explanation(VoiceRefusal.NETWORK_VOICES_ONLY, "English"),
+            "the screen says why nothing is spoken, by name of the copy it resolves",
         )
     }
 
@@ -48,8 +51,8 @@ class VoiceSelectionTest {
         val choice = VoiceSelection.choose(listOf(german), language = "en")
         assertEquals(refuse(VoiceRefusal.NO_OFFLINE_VOICE_FOR_LANGUAGE), choice)
         val explanation = VoiceSelection.explanation(VoiceRefusal.NO_OFFLINE_VOICE_FOR_LANGUAGE, "English")
-        assertTrue(explanation.contains("No offline voice is installed for English"), explanation)
-        assertTrue(explanation.contains("text-to-speech settings"), explanation)
+        assertEquals(VoiceKeys.REFUSAL_NO_OFFLINE_VOICE_FOR_LANGUAGE, explanation.key)
+        assertEquals(listOf("English"), explanation.args, "the sentence names the language it is about")
     }
 
     @Test
@@ -119,12 +122,14 @@ class VoiceSelectionTest {
     }
 
     @Test
-    fun everyRefusalHasALogLineAndAPlainLanguageExplanation() {
+    fun everyRefusalHasALogLineAndASentenceForTheScreen() {
         for (reason in VoiceRefusal.entries) {
             assertTrue(VoiceSelection.logLine(reason, "English").isNotBlank(), "log line for $reason")
             val explanation = VoiceSelection.explanation(reason, "English")
-            assertTrue(explanation.endsWith("."), "explanation for $reason ends in a full stop: $explanation")
-            assertFalse(explanation.contains('_'), "plain language, not an identifier: $reason")
+            assertTrue(explanation.key in VoiceKeys.all, "explanation for $reason names shipped copy: $explanation")
+            // The words themselves, and the punctuation and plain-language rules they kept, are asserted against
+            // the resource files in VoiceCopyKeysTest — that is where the sentences actually live now.
+            assertTrue(explanation.args.size <= 1, "one value at most, so a translation may reorder it: $reason")
         }
     }
 }

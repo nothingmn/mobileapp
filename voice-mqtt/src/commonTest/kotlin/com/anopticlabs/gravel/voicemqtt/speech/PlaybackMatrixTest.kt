@@ -2,6 +2,7 @@ package com.anopticlabs.gravel.voicemqtt.speech
 
 import com.anopticlabs.gravel.voicemqtt.settings.PreferredDevice
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceKeys
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -144,14 +145,15 @@ class PlaybackMatrixTest {
     }
 
     @Test
-    fun everySuppressionHasALogLineAndAPlainLanguageExplanation() {
+    fun everySuppressionHasALogLineAndASentenceForTheScreen() {
         for (reason in SpeechSuppression.entries) {
             assertTrue(PlaybackPolicy.logLine(reason).isNotBlank(), "log line for $reason")
-            assertTrue(PlaybackPolicy.explanation(reason).endsWith("."), "explanation for $reason")
+            // The sentence's own words live in the resources; the rule only names the copy it means.
             assertTrue(
-                !PlaybackPolicy.explanation(reason).contains('_'),
-                "the explanation is plain language, not an identifier: $reason",
+                PlaybackPolicy.explanation(reason).key in VoiceKeys.all,
+                "explanation for $reason names shipped copy",
             )
+            assertTrue(PlaybackPolicy.explanation(reason).args.isEmpty(), "no value to format: $reason")
         }
     }
 }

@@ -9,6 +9,10 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.voicemqtt.copy.AndroidVoiceText
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceCopy
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceKeys
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceText
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
@@ -35,17 +39,23 @@ data class SpeechEngineState(
     val read: Boolean = false,
     val engines: List<TtsEngineOption> = emptyList(),
     val chosenEngine: String? = null,
-    val engineLabel: String = "the phone's default engine",
+    /** Blank until an engine has been read: the screen then says "the phone's default engine" itself. */
+    val engineLabel: String = "",
     val languageLabel: String = "",
     /** Every voice the chosen engine offers, offline ones first, so the picker can show both kinds. */
     val voices: List<OfferedVoice> = emptyList(),
     val chosenVoice: OfferedVoice? = null,
     val refusal: VoiceRefusal? = null,
+    /**
+     * The refusal's own sentence, already in the phone's language. Held here because the state is read by a
+     * Compose screen that has no resolver of its own, and the reason must never arrive without its words.
+     */
+    val refusalSentence: String? = null,
     val failure: String? = null,
 ) {
     /** The one sentence the screen shows when replies cannot be spoken, or null when they can. */
     val problem: String?
-        get() = failure ?: refusal?.let { VoiceSelection.explanation(it, languageLabel) }
+        get() = failure ?: refusalSentence
 }
 
 /**
@@ -86,6 +96,8 @@ class AndroidSpeechOutput(
     private val micBusy: () -> Boolean,
     private val history: VoiceSpeechHistory,
     private val scope: CoroutineScope,
+    /** The feature's own copy, so the sentences below follow the phone's language. */
+    private val text: VoiceText = AndroidVoiceText(context),
 ) : SpeechOutput {
 
     private val appContext = context.applicationContext
@@ -173,7 +185,7 @@ class AndroidSpeechOutput(
         }.getOrElse { e ->
             logger.w { "speech engine not started: ${e::class.java.simpleName}" }
             _speechState.value = _speechState.value.copy(
-                failure = "The speech engine could not be started, so replies are not played.",
+                failure = text.of(VoiceCopy(VoiceKeys.ENGINE_START_FAILED)),
             )
             null
         }
@@ -186,7 +198,7 @@ class AndroidSpeechOutput(
             if (status != TextToSpeech.SUCCESS || tts == null) {
                 engineReady = false
                 _speechState.value = _speechState.value.copy(
-                    failure = "The speech engine did not start, so replies are not played.",
+                    failure = text.of(VoiceCopy(VoiceKeys.ENGINE_INIT_FAILED)),
                 )
                 logger.w { "speech engine unavailable (status $status)" }
                 return@synchronized
@@ -259,6 +271,8 @@ class AndroidSpeechOutput(
             ),
             chosenVoice = (picked as? VoiceChoice.Selected)?.voice,
             refusal = (picked as? VoiceChoice.Refused)?.reason,
+            refusalSentence = (picked as? VoiceChoice.Refused)
+                ?.let { text.of(VoiceSelection.explanation(it.reason, language)) },
             failure = null,
         )
         when (picked) {
@@ -285,8 +299,9 @@ class AndroidSpeechOutput(
     }
 
     private fun engineLabelFor(name: String?, engines: List<TtsEngineOption>): String = when {
-        name == null -> engines.firstOrNull { it.isSystemDefault }?.let { "the phone's default engine (${it.label})" }
-            ?: "the phone's default engine"
+        name == null -> engines.firstOrNull { it.isSystemDefault }
+            ?.let { text.of(VoiceCopy(VoiceKeys.ENGINE_DEFAULT_NAMED, it.label)) }
+            ?: text.of(VoiceCopy(VoiceKeys.ENGINE_DEFAULT))
         else -> engines.firstOrNull { it.name == name }?.label ?: name
     }
 

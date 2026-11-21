@@ -23,13 +23,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.anopticlabs.gravel.notebook.pipeline.NoteReplyResult
+import com.anopticlabs.gravel.voicemqtt.R
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionPhase
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionState
+import com.anopticlabs.gravel.voicemqtt.copy.AndroidVoiceText
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceCopy
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceKeys
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceText
 import com.anopticlabs.gravel.voicemqtt.settings.PreferredDevice
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceField
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
@@ -38,15 +45,16 @@ import com.anopticlabs.gravel.voicemqtt.speech.PlaybackPolicy
 import com.anopticlabs.gravel.voicemqtt.speech.VoiceReplyFileRun
 import com.anopticlabs.gravel.voicemqtt.speech.VoiceSpeechRun
 
-/** The picker's "no device in particular" choice. */
-private const val ANY_DEVICE = "Any Bluetooth device"
-
 /**
  * Settings > Voice Assistant: everything the client needs at connect time, all of it editable.
  *
  * A wrong broker is diagnosable from here — the state line names the address it tried and the failure's own
  * reason — and saving reconnects with the new values immediately. Field errors are inline, checked before the
  * save button is offered, so a typo in a topic never becomes a client that silently receives nothing.
+ *
+ * Every word on this screen comes from the feature's string resources, in the phone's language: the labels
+ * through `stringResource`, and the sentences assembled from a rule (a refusal's reason, what became of the last
+ * answer) through the same resources via [AndroidVoiceText], which is also what the speaker uses.
  */
 @Composable
 fun VoiceMqttSettingsContent(
@@ -58,6 +66,8 @@ fun VoiceMqttSettingsContent(
     speechRuns: List<VoiceSpeechRun> = emptyList(),
     replyFiles: List<VoiceReplyFileRun> = emptyList(),
 ) {
+    val context = LocalContext.current
+    val text: VoiceText = remember(context) { AndroidVoiceText(context) }
     var draft by remember(settings) { mutableStateOf(settings) }
     var portText by remember(settings) { mutableStateOf(settings.port.toString()) }
     var showPassword by remember { mutableStateOf(false) }
@@ -66,6 +76,7 @@ fun VoiceMqttSettingsContent(
     val paired = remember(gate) { gate.pairedDevices() }
     val canListDevices = remember(gate) { gate.canListDevices() }
     val errors = draft.errors()
+    val anyDevice = stringResource(R.string.voice_picker_any_device)
 
     Column(
         modifier = Modifier
@@ -74,12 +85,14 @@ fun VoiceMqttSettingsContent(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Connection", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.voice_section_connection), style = MaterialTheme.typography.titleMedium)
         Text(
             when (connection.phase) {
-                ConnectionPhase.CONNECTED -> "Connected to ${settings.serverUri}"
-                ConnectionPhase.CONNECTING -> "Connecting to ${settings.serverUri}…"
-                ConnectionPhase.DISCONNECTED -> "Not connected"
+                ConnectionPhase.CONNECTED ->
+                    stringResource(R.string.voice_status_connected, settings.serverUri)
+                ConnectionPhase.CONNECTING ->
+                    stringResource(R.string.voice_status_connecting, settings.serverUri)
+                ConnectionPhase.DISCONNECTED -> stringResource(R.string.voice_status_disconnected)
             },
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -90,9 +103,9 @@ fun VoiceMqttSettingsContent(
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Voice assistant")
+                Text(stringResource(R.string.voice_toggle_loop_title))
                 Text(
-                    "Publish every transcribed recording and speak the answer",
+                    stringResource(R.string.voice_toggle_loop_description),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -102,96 +115,109 @@ fun VoiceMqttSettingsContent(
         OutlinedTextField(
             value = draft.host,
             onValueChange = { draft = draft.copy(host = it) },
-            label = { Text("Broker address") },
+            label = { Text(stringResource(R.string.voice_field_broker_address)) },
             singleLine = true,
             isError = errors.containsKey(VoiceField.HOST),
-            supportingText = { errors[VoiceField.HOST]?.let { Text(it) } },
+            supportingText = { errors[VoiceField.HOST]?.let { Text(text.of(it)) } },
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
             value = portText,
-            onValueChange = { text ->
-                portText = text.filter { it.isDigit() }.take(5)
+            onValueChange = { typed ->
+                portText = typed.filter { it.isDigit() }.take(5)
                 draft = draft.copy(port = portText.toIntOrNull() ?: -1)
             },
-            label = { Text("Port") },
+            label = { Text(stringResource(R.string.voice_field_port)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             isError = errors.containsKey(VoiceField.PORT),
-            supportingText = { errors[VoiceField.PORT]?.let { Text(it) } },
+            supportingText = { errors[VoiceField.PORT]?.let { Text(text.of(it)) } },
             modifier = Modifier.fillMaxWidth(),
         )
         ToggleRow(
-            title = "Use TLS",
-            description = "Connect with ssl:// instead of tcp://",
+            title = stringResource(R.string.voice_toggle_tls_title),
+            description = stringResource(R.string.voice_toggle_tls_description),
             checked = draft.tls,
             onCheckedChange = { draft = draft.copy(tls = it) },
         )
         if (draft.tls) {
             ToggleRow(
-                title = "Trust a self-signed certificate",
-                description = "Off by default. On accepts any certificate the broker presents, so only use it for a broker you run yourself.",
+                title = stringResource(R.string.voice_toggle_self_signed_title),
+                description = stringResource(R.string.voice_toggle_self_signed_description),
                 checked = draft.trustSelfSigned,
                 onCheckedChange = { draft = draft.copy(trustSelfSigned = it) },
             )
         }
 
-        Text("Credentials", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.voice_section_credentials), style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = draft.username,
             onValueChange = { draft = draft.copy(username = it) },
-            label = { Text("Username (optional)") },
+            label = { Text(stringResource(R.string.voice_field_username)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
             value = draft.password,
             onValueChange = { draft = draft.copy(password = it) },
-            label = { Text("Password (optional)") },
+            label = { Text(stringResource(R.string.voice_field_password)) },
             singleLine = true,
             visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
-                TextButton(onClick = { showPassword = !showPassword }) { Text(if (showPassword) "Hide" else "Show") }
+                TextButton(onClick = { showPassword = !showPassword }) {
+                    Text(
+                        if (showPassword) {
+                            stringResource(R.string.voice_button_hide)
+                        } else {
+                            stringResource(R.string.voice_button_show)
+                        },
+                    )
+                }
             },
-            supportingText = { Text("Kept encrypted in this phone's Keystore-backed storage.") },
+            supportingText = { Text(stringResource(R.string.voice_field_password_note)) },
             modifier = Modifier.fillMaxWidth(),
         )
 
-        Text("Topics", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.voice_section_topics), style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = draft.ingressTopic,
             onValueChange = { draft = draft.copy(ingressTopic = it) },
-            label = { Text("Request topic") },
+            label = { Text(stringResource(R.string.voice_field_ingress_topic)) },
             singleLine = true,
             isError = errors.containsKey(VoiceField.INGRESS_TOPIC),
             supportingText = {
-                Text(errors[VoiceField.INGRESS_TOPIC] ?: "One exact topic; the server takes the client's identity from it.")
+                Text(
+                    errors[VoiceField.INGRESS_TOPIC]?.let { text.of(it) }
+                        ?: stringResource(R.string.voice_hint_ingress_topic),
+                )
             },
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
             value = draft.egressTopic,
             onValueChange = { draft = draft.copy(egressTopic = it) },
-            label = { Text("Reply topic filter") },
+            label = { Text(stringResource(R.string.voice_field_egress_topic)) },
             singleLine = true,
             isError = errors.containsKey(VoiceField.EGRESS_TOPIC),
             supportingText = {
-                Text(errors[VoiceField.EGRESS_TOPIC] ?: "A wildcard is expected here: the reply topic's last part is the server's.")
+                Text(
+                    errors[VoiceField.EGRESS_TOPIC]?.let { text.of(it) }
+                        ?: stringResource(R.string.voice_hint_egress_topic),
+                )
             },
             modifier = Modifier.fillMaxWidth(),
         )
 
-        Text("Speaking", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.voice_section_speaking), style = MaterialTheme.typography.titleMedium)
         ToggleRow(
-            title = "Speak the replies",
-            description = "Off means nothing is played aloud. The answer still arrives and is still kept with the note.",
+            title = stringResource(R.string.voice_toggle_speak_replies_title),
+            description = stringResource(R.string.voice_toggle_speak_replies_description),
             checked = draft.speakReplies,
             onCheckedChange = { draft = draft.copy(speakReplies = it) },
         )
         ToggleRow(
-            title = "Only play through a Bluetooth headset",
-            description = "On means a headset must be connected at the moment the answer arrives. Off plays through " +
-                "whatever the phone is using, its own speaker included.",
+            title = stringResource(R.string.voice_toggle_headset_only_title),
+            description = stringResource(R.string.voice_toggle_headset_only_description),
             checked = draft.headsetOnly,
             onCheckedChange = { draft = draft.copy(headsetOnly = it) },
         )
@@ -200,11 +226,11 @@ fun VoiceMqttSettingsContent(
                 onClick = { pickerOpen = true },
                 enabled = canListDevices && draft.headsetOnly,
             ) {
-                Text("Replies play on: ${draft.preferredDevice?.name ?: ANY_DEVICE}")
+                Text(stringResource(R.string.voice_picker_device_line, draft.preferredDevice?.name ?: anyDevice))
             }
             DropdownMenu(expanded = pickerOpen, onDismissRequest = { pickerOpen = false }) {
                 DropdownMenuItem(
-                    text = { Text(ANY_DEVICE) },
+                    text = { Text(anyDevice) },
                     onClick = {
                         draft = draft.copy(preferredDevice = null)
                         pickerOpen = false
@@ -222,12 +248,12 @@ fun VoiceMqttSettingsContent(
             }
             if (!draft.headsetOnly) {
                 Text(
-                    "Only used when replies are restricted to Bluetooth.",
+                    stringResource(R.string.voice_hint_device_headset_only),
                     style = MaterialTheme.typography.bodySmall,
                 )
             } else if (!canListDevices) {
                 Text(
-                    "Allow the Nearby devices permission to choose one paired headset.",
+                    stringResource(R.string.voice_hint_devices_permission),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -235,44 +261,49 @@ fun VoiceMqttSettingsContent(
         // The speaker's own record, so a reply that was held back is a fact on this screen and not a silence.
         speechRuns.firstOrNull()?.suppression?.let { reason ->
             Text(
-                "Last reply was not played: ${PlaybackPolicy.explanation(reason)}",
+                stringResource(
+                    R.string.voice_speech_last_not_played,
+                    text.of(PlaybackPolicy.explanation(reason)),
+                ),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
         // And where the last answer went: into the note its recording produced, or why it did not get there.
         replyFiles.firstOrNull()?.let { run ->
-            Text(filingSentence(run), style = MaterialTheme.typography.bodySmall)
+            Text(filingSentence(run, text), style = MaterialTheme.typography.bodySmall)
         }
 
         Button(
             onClick = { onSave(draft) },
             enabled = errors.isEmpty(),
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Save and reconnect") }
+        ) { Text(stringResource(R.string.voice_button_save_and_reconnect)) }
 
         Button(
             onClick = {
                 onSave(draft)
                 onSendTest()
-                lastAction = "Test message sent; the answer is spoken when it arrives."
+                lastAction = text.of(VoiceCopy(VoiceKeys.ACTION_TEST_SENT))
             },
             enabled = errors.isEmpty(),
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Send test message") }
+        ) { Text(stringResource(R.string.voice_button_send_test)) }
 
         lastAction?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     }
 }
 
 /** What became of the last answer: filed into the note its recording produced, or the reason it was not. */
-private fun filingSentence(run: VoiceReplyFileRun): String = when (run.outcome) {
-    NoteReplyResult.Appended -> "Last reply was filed into “${run.title}”."
-    NoteReplyResult.NotListed -> "Last reply was not filed: its note is gone."
-    NoteReplyResult.Archived -> "Last reply was not filed: its note is in the archive."
-    NoteReplyResult.ChangedAfterRetry -> "Last reply was not filed: its note changed twice while it was being filed."
-    NoteReplyResult.EmptyAnswer -> "Last reply was not filed: it had no text to keep."
-    NoteReplyResult.StorageUnavailable -> "Last reply was not filed: the notebook's storage was unavailable."
-}
+private fun filingSentence(run: VoiceReplyFileRun, text: VoiceText): String = text.of(
+    when (run.outcome) {
+        NoteReplyResult.Appended -> VoiceCopy(VoiceKeys.FILING_APPENDED, run.title)
+        NoteReplyResult.NotListed -> VoiceCopy(VoiceKeys.FILING_NOT_LISTED)
+        NoteReplyResult.Archived -> VoiceCopy(VoiceKeys.FILING_ARCHIVED)
+        NoteReplyResult.ChangedAfterRetry -> VoiceCopy(VoiceKeys.FILING_CHANGED_AFTER_RETRY)
+        NoteReplyResult.EmptyAnswer -> VoiceCopy(VoiceKeys.FILING_EMPTY_ANSWER)
+        NoteReplyResult.StorageUnavailable -> VoiceCopy(VoiceKeys.FILING_STORAGE_UNAVAILABLE)
+    },
+)
 
 @Composable
 private fun ToggleRow(

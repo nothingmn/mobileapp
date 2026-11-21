@@ -270,13 +270,67 @@ is filed into the note and the link is dropped.
 Confirmation prompts (the protocol's mid-turn human-in-the-loop) are deliberately **not** implemented; the
 protocol says not to build them into v1.
 
+## Localisation
+
+The feature's own words follow the phone's language. Two mechanisms, because the two modules are not the same
+kind of module, and the tests hold both to the same rules.
+
+- **`:voice-mqtt` — Android string resources**, `src/androidMain/res/values/strings.xml` and
+  `values-fr/strings.xml`, read through a `Context` by `AndroidVoiceText`. Android resources rather than Compose
+  resources because half the copy is not drawn: the sentences the speaker says
+  (`VoiceLoopSentences`), a refusal's reason, a suppression's reason, and the connection's failure line are all
+  resolved from a coroutine with no `Composable` anywhere near them, and `Context.getString` is the lookup that
+  works in both places. The rules that decide *what* to say stay pure Kotlin (`PlaybackPolicy`, `VoiceSelection`,
+  `VoiceTopics`, `VoiceSettings`) and hand back a `VoiceCopy` — a resource key plus its arguments — so a rule can
+  never hold an English sentence. `VoiceKeys` names every key; `AndroidVoiceText` maps each one to its
+  `R.string`.
+- **`:pebble` — Compose Multiplatform string resources**, `src/commonMain/composeResources/values/strings.xml`
+  and `values-fr/strings.xml`, resolved with `stringResource`. This module has iOS targets, so Compose resources
+  are the mechanism it already ships (the app's own strings live in the same file); `:pebble` cannot depend on
+  the Android-only module for anything. The three sentences the Text to Speech screen assembles from a fact
+  (`cloudSpeechNote`, `speechInUseLine`, `pinnedVoiceNote`) hand back a `SpeechCopy` and are resolved by the
+  screen, and the AI section's item is resolved in `rememberSettingsItemsState` because the item list is built
+  inside a `remember`.
+
+**Locales shipped:** English (`values/`) and French (`values-fr/`), 83 keys in the voice module and 21 in the
+Text to Speech screen, every one prefixed `voice_` so the feature's copy reads as one block in a review.
+French is standard French with Canadian vocabulary where the word genuinely differs — *jumelé* for a paired
+headset, *infonuagique* for a cloud service, *téléphone* throughout — and keeps the technical terms French has
+no settled word for: **broker**, **Bluetooth**, **TLS**, **Keystore**, **MQTT**, **joker** for a topic wildcard,
+**sujet** for a topic. No string in either module embeds a count, so there are no plural resources; if one
+appears, it gets `<plurals>` (Android) and a quantity string (Compose) rather than concatenation.
+
+**Adding a language:** copy `values/strings.xml` to `values-<tag>/strings.xml` (`values-fr` is the worked
+example) in the module concerned and translate every key. Nothing else is needed: the platform picks the file
+from the phone's language, and a test fails the build if a key is missing or if a translation drops a format
+argument.
+
+**What is deliberately still English:**
+
+- **The rest of the app.** Upstream's UI is English-only and out of scope for this feature; in `:pebble`'s
+  `values-fr` only the `voice_*` keys are translated and everything else falls back to `values/`, which a test
+  asserts. In `:voice-mqtt`'s resources only this feature's keys exist at all.
+- **Developer text**: log tags and log lines (`PlaybackPolicy.logLine`, `VoiceSelection.logLine`, every
+  `logger.*` call), MQTT topics and the other protocol constants, the redacted `VoiceSettings.toString()`, and
+  the `spokenWhere` phrase that only ever reaches a log line. A scan test fails on any user-facing English
+  sentence left in the Kotlin, with exactly these on its allowlist.
+- **Upstream's settings plumbing this feature passes through**: the `Section` enum's names (`Voice Assistant`,
+  `AI`, `Text to Speech` as a section title), the top bar title set in `composeApp`'s `AndroidVoiceMqtt`, and the
+  Voice Assistant item's own title and description in the settings list. Those are upstream strings in upstream
+  files; localising them here would restructure code this change does not own.
+
+**The tests that enforce it** (both run in `testAndroidHostTest`, no phone needed): `VoiceCopyKeysTest` and
+`TextToSpeechCopyKeysTest` compare the two locale files key for key, hold the code's key set to the files, check
+that each translation keeps the same format arguments, assert that only this feature's keys are translated in
+`:pebble`, and scan the Kotlin that draws or says the copy for a leftover English sentence.
+
 ## Running the tests
 
 ```
 ./gradlew :voice-mqtt:testAndroidHostTest
 ```
 
-62 tests, no device and no broker needed: the wire contract (five root keys, three frozen literals, UUID v4,
+73 tests, no device and no broker needed: the wire contract (five root keys, three frozen literals, UUID v4,
 1024-character and 8192-byte refusals), the five-minute session reset, the same-requestId retry inside ten
 minutes, reply pairing on `requestId` (a mismatched or empty one is ignored), and the turn as a whole against a
 fake transport (a retry carries the same requestId, a timeout is spoken, a blank transcript is refused with a
@@ -286,4 +340,5 @@ rule: a network-only engine is refused, one on-phone voice among network ones is
 on-phone voice gives the named reason, a pinned network voice is refused while offline speech is on, and a
 preferences file from the previous increment keeps both switches and its headset and reads back offline-only.
 
-The module's own test task is enough; nothing in it needs `adb`.
+The module's own test task is enough; nothing in it needs `adb`. Seven of those tests are the localisation
+enforcement described above.

@@ -1,5 +1,7 @@
 package com.anopticlabs.gravel.voicemqtt.client
 
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceCopy
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceText
 import com.anopticlabs.gravel.voicemqtt.protocol.EnvelopeRefusal
 import com.anopticlabs.gravel.voicemqtt.protocol.VoiceEnvelope
 import com.anopticlabs.gravel.voicemqtt.protocol.VoiceEnvelopeCodec
@@ -36,6 +38,12 @@ class VoiceTurnClient(
     private val replies: VoiceReplyHandler,
     private val scope: CoroutineScope,
     private val now: () -> Long,
+    /**
+     * Resolves the loop's sentences into the user's language. Handed in rather than looked up here: this class
+     * is common code proved by the host tests and must not know about Android resources, while the failure
+     * paths below still say something out loud in the phone's own language.
+     */
+    private val copy: VoiceText,
     private val replyTimeoutMillis: Long = 60_000L,
     private val retryDelaysMillis: List<Long> = listOf(1_000L, 2_000L, 4_000L),
     private val busyBackoffMillis: Long = 3_000L,
@@ -60,7 +68,7 @@ class VoiceTurnClient(
     suspend fun publishTranscript(text: String): String? = send(text)
 
     /** The settings screen's test: a fixed line out, whatever comes back spoken. */
-    suspend fun sendTestMessage(): String? = send(VoiceLoopSentences.TEST_MESSAGE)
+    suspend fun sendTestMessage(): String? = send(copy.of(VoiceLoopSentences.TEST_MESSAGE))
 
     suspend fun onReplyMessage(payload: ByteArray) {
         when (val outcome = replies.accept(payload.decodeToString())) {
@@ -84,7 +92,7 @@ class VoiceTurnClient(
         val request = session.beginTurn(text, now())
         val envelope = VoiceEnvelope(sessionId = request.sessionId, requestId = request.requestId, text = text)
         VoiceEnvelopeCodec.refusal(envelope)?.let { refusal ->
-            speaker.speak(sentenceFor(refusal))
+            speaker.speak(copy.of(sentenceFor(refusal)))
             return null
         }
         return if (deliver(request, current, attempt = 0)) request.requestId else null
@@ -104,7 +112,7 @@ class VoiceTurnClient(
         val backoff = retryDelaysMillis.getOrNull(attempt)
         val retry = backoff?.let { session.retryFor(request, now()) }
         if (backoff == null || retry == null) {
-            speaker.speak(VoiceLoopSentences.NOT_CONNECTED)
+            speaker.speak(copy.of(VoiceLoopSentences.NOT_CONNECTED))
             return false
         }
         delay(backoff)
@@ -126,7 +134,7 @@ class VoiceTurnClient(
                     false
                 }
             }
-            if (expired) speaker.speak(VoiceLoopSentences.TIMEOUT)
+            if (expired) speaker.speak(copy.of(VoiceLoopSentences.TIMEOUT))
         }
     }
 
@@ -148,7 +156,7 @@ class VoiceTurnClient(
         if (attempts >= maxBusyRetries || retry == null) {
             forget(requestId)
             lock.withLock { replies.forget(requestId) }
-            speaker.speak(VoiceLoopSentences.BUSY)
+            speaker.speak(copy.of(VoiceLoopSentences.BUSY))
             return
         }
         busyRetries[requestId] = attempts + 1
@@ -157,11 +165,11 @@ class VoiceTurnClient(
         if (!transport.publish(settings().ingressTopic, VoiceEnvelopeCodec.payload(envelope))) {
             forget(requestId)
             lock.withLock { replies.forget(requestId) }
-            speaker.speak(VoiceLoopSentences.NOT_CONNECTED)
+            speaker.speak(copy.of(VoiceLoopSentences.NOT_CONNECTED))
         }
     }
 
-    private fun sentenceFor(refusal: EnvelopeRefusal): String = when (refusal) {
+    private fun sentenceFor(refusal: EnvelopeRefusal): VoiceCopy = when (refusal) {
         EnvelopeRefusal.BLANK_TEXT -> VoiceLoopSentences.EMPTY_TRANSCRIPT
         EnvelopeRefusal.TOO_LONG -> VoiceLoopSentences.TOO_LONG
         EnvelopeRefusal.TOO_LARGE -> VoiceLoopSentences.TOO_LARGE
@@ -169,8 +177,6 @@ class VoiceTurnClient(
     }
 
     /** The opaque code is never spoken; only the sentence that goes with it. */
-    private fun failureFor(code: String): String = when (code) {
-        "payload_size" -> VoiceLoopSentences.TOO_LARGE
-        else -> VoiceLoopSentences.FAILURE
-    }
+    private fun failureFor(code: String): String =
+        copy.of(if (code == "payload_size") VoiceLoopSentences.TOO_LARGE else VoiceLoopSentences.FAILURE)
 }

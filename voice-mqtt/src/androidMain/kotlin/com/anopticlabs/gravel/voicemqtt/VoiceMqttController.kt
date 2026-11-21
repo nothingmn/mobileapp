@@ -9,6 +9,8 @@ import com.anopticlabs.gravel.voicemqtt.client.ConnectionPhase
 import com.anopticlabs.gravel.voicemqtt.client.ConnectionState
 import com.anopticlabs.gravel.voicemqtt.client.PahoVoiceTransport
 import com.anopticlabs.gravel.voicemqtt.client.VoiceTurnClient
+import com.anopticlabs.gravel.voicemqtt.copy.AndroidVoiceText
+import com.anopticlabs.gravel.voicemqtt.copy.VoiceText
 import com.anopticlabs.gravel.voicemqtt.session.VoiceReplyHandler
 import com.anopticlabs.gravel.voicemqtt.session.VoiceSessionManager
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
@@ -48,6 +50,8 @@ class VoiceMqttController(
     speaker: AndroidSpeechOutput,
     private val scope: CoroutineScope,
     private val now: () -> Long = System::currentTimeMillis,
+    /** The phone's own copy, so a sentence the loop says follows the phone's language. */
+    private val copy: VoiceText,
     /** The record the settings screen reads for "reply filed", or the reason it was not. */
     val replyFiles: VoiceReplyFileHistory = VoiceReplyFileHistory(now = now),
     /**
@@ -67,6 +71,7 @@ class VoiceMqttController(
         replies = VoiceReplyHandler(now),
         scope = scope,
         now = now,
+        copy = copy,
         onAnswer = ::fileReply,
     )
 
@@ -210,8 +215,9 @@ fun buildVoiceMqttEngine(
 ): VoiceMqttEngine {
     val store = VoiceSettingsStore(context)
     val gate = BluetoothAudioGate(context)
+    val text = AndroidVoiceText(context)
     val stateFlow = MutableStateFlow(ConnectionState())
-    val transport = PahoVoiceTransport(clientId = store.clientId, stateFlow = stateFlow)
+    val transport = PahoVoiceTransport(clientId = store.clientId, stateFlow = stateFlow, text = text)
     val speechHistory = VoiceSpeechHistory(now = System::currentTimeMillis)
     val speaker = AndroidSpeechOutput(
         context = context,
@@ -220,8 +226,15 @@ fun buildVoiceMqttEngine(
         micBusy = micBusy,
         history = speechHistory,
         scope = scope,
+        text = text,
     )
-    val controller = VoiceMqttController(store = store, transport = transport, speaker = speaker, scope = scope)
+    val controller = VoiceMqttController(
+        store = store,
+        transport = transport,
+        speaker = speaker,
+        scope = scope,
+        copy = text,
+    )
     return VoiceMqttEngine(
         controller = controller,
         gate = gate,

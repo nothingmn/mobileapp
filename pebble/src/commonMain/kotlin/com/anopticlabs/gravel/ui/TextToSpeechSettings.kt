@@ -81,7 +81,8 @@ data class TextToSpeechFacts(
     val engines: List<SpeechEngine> = emptyList(),
     /** The chosen engine's name; null is the phone's default engine. */
     val engine: String? = null,
-    val engineLabel: String = "the phone's default engine",
+    /** Blank until an engine has been read; the screen then says "the phone's default engine" itself. */
+    val engineLabel: String = "",
     /** The pinned voice's name; null is the best voice for the phone's language. */
     val voice: String? = null,
     /** "Offline speech": on means only a voice that synthesises on this phone may speak. */
@@ -101,17 +102,17 @@ data class TextToSpeechFacts(
 }
 
 /** The switch's own words, used by the screen and by the test that proves they are plain. */
-const val OFFLINE_SPEECH_TITLE = "Offline speech"
-const val OFFLINE_SPEECH_SUBTITLE = "Local only — voices that never send text to a server"
+val OFFLINE_SPEECH_TITLE = SpeechCopy(TextToSpeechKeys.OFFLINE_SPEECH_TITLE)
+val OFFLINE_SPEECH_SUBTITLE = SpeechCopy(TextToSpeechKeys.OFFLINE_SPEECH_SUBTITLE)
 
 /**
  * The sentence under the switch while offline speech is **off**, so nobody turns the text-leaves-the-phone
  * mode on without reading it. Null while it is on: there is nothing to warn about.
  */
-fun cloudSpeechNote(offlineOnly: Boolean): String? = if (offlineOnly) {
+fun cloudSpeechNote(offlineOnly: Boolean): SpeechCopy? = if (offlineOnly) {
     null
 } else {
-    "Replies are then synthesised by this engine's cloud service, so the text of every reply leaves this phone."
+    SpeechCopy(TextToSpeechKeys.CLOUD_SPEECH_NOTE)
 }
 
 /** The Settings item is shown only where an engine is bound; with VOICE_MQTT_ENABLED off nothing is. */
@@ -121,13 +122,13 @@ fun textToSpeechItemShown(supported: Boolean): Boolean = supported
  * What the screen says the current voice is, in words that say where the words become sound. Null before the
  * phone has been read.
  */
-fun speechInUseLine(facts: TextToSpeechFacts): String? {
+fun speechInUseLine(facts: TextToSpeechFacts): SpeechCopy? {
     if (!facts.read) return null
-    val voice = facts.inUse ?: return facts.problem?.let { "Nothing is spoken: $it" }
+    val voice = facts.inUse ?: return facts.problem?.let { SpeechCopy(TextToSpeechKeys.NOTHING_SPOKEN, it) }
     return if (voice.offline) {
-        "Speaking with ${voice.label}, synthesised on this phone."
+        SpeechCopy(TextToSpeechKeys.SPEAKING_WITH_OFFLINE, voice.label)
     } else {
-        "Speaking with ${voice.label}, synthesised by the engine's cloud service — the reply's text leaves this phone."
+        SpeechCopy(TextToSpeechKeys.SPEAKING_WITH_CLOUD, voice.label)
     }
 }
 
@@ -135,9 +136,13 @@ fun speechInUseLine(facts: TextToSpeechFacts): String? {
  * The note when a pinned voice is no longer offered by the engine — it was removed, or the engine was changed.
  * The best voice for the language stands in, and the screen says so rather than showing a choice that is gone.
  */
-fun pinnedVoiceNote(facts: TextToSpeechFacts): String? {
+fun pinnedVoiceNote(facts: TextToSpeechFacts): SpeechCopy? {
     val pinned = facts.voice ?: return null
     if (facts.inUse?.name == pinned) return null
-    return "The voice you chose is not offered by this engine any more, so the best voice for " +
-        "${facts.languageLabel.ifBlank { "this language" }} is used instead."
+    return if (facts.languageLabel.isBlank()) {
+        // The sentence needs a noun phrase for the language; with no language known, it says "this language".
+        SpeechCopy(TextToSpeechKeys.PINNED_VOICE_GONE_THIS_LANGUAGE)
+    } else {
+        SpeechCopy(TextToSpeechKeys.PINNED_VOICE_GONE, facts.languageLabel)
+    }
 }
