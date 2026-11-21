@@ -40,12 +40,51 @@ the module on a classpath but the field false, the app registers an empty Koin m
 
 That is the shape an upstream PR ships in: inert unless someone asks for it.
 
+## Where the broker, the port, TLS and the topics come from
+
+Nothing about the destination is compiled into the source. Five BuildKonfig fields carry it, and every one of
+them is **blank in the committed `gradle.properties`** so that this repository carries no one's network:
+
+| `gradle.properties` key | BuildKonfig field | Meaning when blank |
+|---|---|---|
+| `voiceMqttBrokerHost` | `VOICE_MQTT_BROKER_HOST` | no address; the field starts empty and must be filled in |
+| `voiceMqttBrokerPort` | `VOICE_MQTT_BROKER_PORT` | no port; 1883 is assumed only once an address exists |
+| `voiceMqttTls` | `VOICE_MQTT_TLS` | plain `tcp://` |
+| `voiceMqttRequestTopic` | `VOICE_MQTT_REQUEST_TOPIC` | no request topic; the field starts empty |
+| `voiceMqttResponseTopic` | `VOICE_MQTT_RESPONSE_TOPIC` | no reply topic; the field starts empty |
+
+A builder supplies their own values in either of the two ways the repository already uses for its other
+build-time settings (`:util`'s `bugUrl`, `googleClientId` and the auth flags):
+
+```
+./gradlew :androidApp:assembleDebug -PvoiceMqttEnabled=true \
+  -PvoiceMqttBrokerHost=mqtt.example -PvoiceMqttBrokerPort=1883 \
+  -PvoiceMqttTls=true \
+  -PvoiceMqttRequestTopic=voice/request \
+  -PvoiceMqttResponseTopic='voice/reply/#'
+```
+
+or by uncommenting the same keys in `gradle.properties`, or in the untracked `local.properties`. **A blank key
+is not a default value.** Blank (or whitespace, or a port that is not a number) resolves to *unset*, and the
+app then starts with the field empty and says so on the settings screen — it never substitutes an address of
+its own. `voiceMqttTls` is the one field with a fallback, and the fallback is the safe one: no TLS means plain
+`tcp://`, never `ssl://`.
+
+**What the user types on the phone always wins.** A baked value is only a pre-filled field; once the user has
+saved a connection, the stored value is used and the build's value is not consulted again — including a field
+the user deliberately emptied, which stays empty. The precedence, in one place
+(`VoiceConnectionDefaults.resolve`): *stored value → else baked value → else unset*.
+
 ## The two topics
 
-| Direction | Default | Editable |
+| Direction | Value | Editable |
 |---|---|---|
-| publish a turn | `agentry/v1/gateway/req/voicessistant` | yes, one concrete topic (no `+` or `#`) |
-| subscribe for answers | `agentry/v1/gateway/resp/voicessistant/#` | yes, wildcards expected |
+| publish a turn | no default; `voiceMqttRequestTopic`, else typed in Settings (`example/topic` in the tests) | yes, one concrete topic (no `+` or `#`) |
+| subscribe for answers | no default; `voiceMqttResponseTopic`, else typed in Settings (`example/topic/#` in the tests) | yes, wildcards expected |
+
+The two topics are the Agentry route the phone is served on, and they belong to whoever runs the broker, so
+they are supplied the same way the address is and validated by the same rules. An unset topic is an inline
+field error, not a topic this code chose.
 
 Nothing else is published or subscribed: no event plane, no private webhook. The client's identity on this
 broker comes from the topic route and nothing else — the broker is anonymous, and the payload is deliberately
@@ -284,6 +323,13 @@ broker address, port, TLS on/off, an explicit opt-in to trust a self-signed cert
 password, the request topic and the reply filter. It shows connected/disconnected with the last failure in
 words, so a wrong host is diagnosable from the phone, and saving reconnects on the spot — no app restart.
 
+- **It starts from what the build baked in, or from nothing.** A build that supplied values shows them as the
+  first draft, and a build that supplied none — this repository, by default — shows empty fields and one
+  sentence saying the address has to be entered before the voice loop can be turned on. The switch that turns
+  the loop on is disabled until every field is valid; turning it off is always allowed.
+- **The phone's answer is final.** Once the user saves, the stored value is what the client uses, even if a
+  later build bakes in a different one, and a field the user emptied stays empty.
+
 - **TLS off** connects plainly to the port given (`tcp://host:port`). **TLS on** uses `ssl://` with the platform's
   own trust anchors; only the opt-in accepts a self-signed certificate, and it says so on the switch.
 - **Topics are validated at save time**, inline: the request topic must be one concrete topic, the reply filter
@@ -346,7 +392,7 @@ kind of module, and the tests hold both to the same rules.
   screen, and the AI section's item is resolved in `rememberSettingsItemsState` because the item list is built
   inside a `remember`.
 
-**Locales shipped:** English (`values/`) and French (`values-fr/`), 87 keys in the voice module and 21 in the
+**Locales shipped:** English (`values/`) and French (`values-fr/`), 89 keys in the voice module and 21 in the
 Text to Speech screen, every one prefixed `voice_` so the feature's copy reads as one block in a review.
 French is standard French with Canadian vocabulary where the word genuinely differs — *jumelé* for a paired
 headset, *infonuagique* for a cloud service, *téléphone* throughout — and keeps the technical terms French has
@@ -384,7 +430,7 @@ that each translation keeps the same format arguments, assert that only this fea
 ./gradlew :voice-mqtt:testAndroidHostTest
 ```
 
-89 tests, no device and no broker needed: the wire contract (five root keys, three frozen literals, UUID v4,
+100 tests, no device and no broker needed: the wire contract (five root keys, three frozen literals, UUID v4,
 1024-character and 8192-byte refusals), the five-minute session reset, the same-requestId retry inside ten
 minutes, reply pairing on `requestId` (a mismatched or empty one is ignored), and the turn as a whole against a
 fake transport (a retry carries the same requestId, a timeout is spoken, a blank transcript is refused with a
@@ -393,6 +439,12 @@ migration and the paired-but-disconnected case are pure-Kotlin tests over the sa
 rule: a network-only engine is refused, one on-phone voice among network ones is chosen, a language with no
 on-phone voice gives the named reason, a pinned network voice is refused while offline speech is on, and a
 preferences file from the previous increment keeps both switches and its headset and reads back offline-only.
+
+Eleven of them are the connection rule behind the settings screen (`VoiceConnectionDefaultsTest`): a build that
+bakes nothing leaves every field unset, a baked value becomes the first draft, a stored value — and a stored
+*off* — beats a baked one, a field the user emptied stays empty, a port that is not a number is not guessed,
+1883 applies only once an address exists, and the topics keep the rules they already had (a wildcard request
+topic is still refused).
 
 The module's own test task is enough; nothing in it needs `adb`. Fifteen of those tests are the speaking
 notification — it appears on the first utterance and never on a suppressed one, a second utterance updates the

@@ -34,6 +34,18 @@ val voiceMqttEnabled = (
         ?: System.getenv("VOICE_MQTT_ENABLED")
     )?.trim()?.equals("true", ignoreCase = true) ?: false
 
+// The same two helpers :util uses for the auth flags: a value from local.properties, then from a Gradle
+// property (-P on the command line, or gradle.properties), and otherwise nothing at all. Blank counts as
+// nothing, which is what makes a blank key in gradle.properties mean "no baked default" rather than "".
+fun gradleStringPropOrNull(name: String): String? {
+    val local = properties.getProperty(name)?.takeIf { it.isNotBlank() }
+    val gradle = providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
+    return local ?: gradle
+}
+
+fun gradleBooleanProp(name: String, default: Boolean): Boolean =
+    gradleStringPropOrNull(name)?.let { it.trim().equals("true", ignoreCase = true) } ?: default
+
 kotlin {
     android {
         namespace = "com.anopticlabs.gravel.voicemqtt"
@@ -91,5 +103,36 @@ buildkonfig {
 
     defaultConfigs {
         buildConfigField(FieldSpec.Type.BOOLEAN, "VOICE_MQTT_ENABLED", voiceMqttEnabled.toString())
+        // Where the loop connects. Every one of these is blank by default, and blank means *unset*, not "the
+        // author's own broker": a public build carries no address, no port and no topics, so a builder supplies
+        // their own (-PvoiceMqttBrokerHost=... or a key in gradle.properties) and a phone that has none starts
+        // with the fields empty and asks the user for an address. The port stays a string because a value that
+        // is not a number must leave the field unset rather than fail the build or crash the app.
+        buildConfigField(
+            FieldSpec.Type.STRING,
+            "VOICE_MQTT_BROKER_HOST",
+            gradleStringPropOrNull("voiceMqttBrokerHost"),
+            nullable = true,
+        )
+        buildConfigField(
+            FieldSpec.Type.STRING,
+            "VOICE_MQTT_BROKER_PORT",
+            gradleStringPropOrNull("voiceMqttBrokerPort"),
+            nullable = true,
+        )
+        // Unset is plain tcp://; a build that does not say "tls" bakes in false.
+        buildConfigField(FieldSpec.Type.BOOLEAN, "VOICE_MQTT_TLS", gradleBooleanProp("voiceMqttTls", default = false).toString())
+        buildConfigField(
+            FieldSpec.Type.STRING,
+            "VOICE_MQTT_REQUEST_TOPIC",
+            gradleStringPropOrNull("voiceMqttRequestTopic"),
+            nullable = true,
+        )
+        buildConfigField(
+            FieldSpec.Type.STRING,
+            "VOICE_MQTT_RESPONSE_TOPIC",
+            gradleStringPropOrNull("voiceMqttResponseTopic"),
+            nullable = true,
+        )
     }
 }

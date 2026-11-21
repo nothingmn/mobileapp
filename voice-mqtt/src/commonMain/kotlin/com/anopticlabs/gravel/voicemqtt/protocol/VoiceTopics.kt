@@ -3,13 +3,13 @@ package com.anopticlabs.gravel.voicemqtt.protocol
 import com.anopticlabs.gravel.voicemqtt.copy.VoiceCopy
 import com.anopticlabs.gravel.voicemqtt.copy.VoiceKeys
 
-/** The two topics the protocol names, as defaults only: every one of them is editable in Settings. */
-const val DEFAULT_INGRESS_TOPIC = "agentry/v1/gateway/req/voicessistant"
-const val DEFAULT_EGRESS_TOPIC = "agentry/v1/gateway/resp/voicessistant/#"
-
 /**
  * Topic shape rules, checked when the user saves rather than when the client connects, so a typo is an
  * inline error on the field instead of a client that silently receives nothing.
+ *
+ * There are no topic defaults here on purpose: both topics come from the build (`voiceMqttRequestTopic`,
+ * `voiceMqttResponseTopic`, blank in this repository) or from the user, and an unset one is a field error
+ * rather than a topic this code chose.
  *
  * A refusal is copy, not text: the rule is pure Kotlin proved by the host tests, and the screen resolves the key
  * in the phone's language.

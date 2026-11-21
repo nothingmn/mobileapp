@@ -38,6 +38,7 @@ import com.anopticlabs.gravel.voicemqtt.copy.VoiceCopy
 import com.anopticlabs.gravel.voicemqtt.copy.VoiceKeys
 import com.anopticlabs.gravel.voicemqtt.copy.VoiceText
 import com.anopticlabs.gravel.voicemqtt.settings.PreferredDevice
+import com.anopticlabs.gravel.voicemqtt.settings.VoiceConnectionDefaults
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceField
 import com.anopticlabs.gravel.voicemqtt.settings.VoiceSettings
 import com.anopticlabs.gravel.voicemqtt.speech.BluetoothAudioGate
@@ -69,7 +70,10 @@ fun VoiceMqttSettingsContent(
     val context = LocalContext.current
     val text: VoiceText = remember(context) { AndroidVoiceText(context) }
     var draft by remember(settings) { mutableStateOf(settings) }
-    var portText by remember(settings) { mutableStateOf(settings.port.toString()) }
+    // A port of zero means "none": the field starts empty rather than showing a number the build never supplied.
+    var portText by remember(settings) {
+        mutableStateOf(settings.port.takeIf { it != VoiceConnectionDefaults.UNSET_PORT }?.toString().orEmpty())
+    }
     var showPassword by remember { mutableStateOf(false) }
     var pickerOpen by remember { mutableStateOf(false) }
     var lastAction by remember { mutableStateOf<String?>(null) }
@@ -100,6 +104,15 @@ fun VoiceMqttSettingsContent(
         if (lastError != null && connection.phase != ConnectionPhase.CONNECTED) {
             Text(lastError, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
+        // Nothing is baked into this build by default, so an empty address is a state the screen states plainly:
+        // it is what has to be filled in before the loop can be turned on, not a value the app will pick instead.
+        if (draft.host.isBlank()) {
+            Text(
+                stringResource(R.string.voice_hint_connection_unset),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -109,7 +122,13 @@ fun VoiceMqttSettingsContent(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Switch(checked = draft.enabled, onCheckedChange = { onSave(draft.copy(enabled = it)) })
+            // Turning the loop on needs a broker the app can actually reach; turning it off is always allowed,
+            // so an address cleared while it was on can never strand the switch.
+            Switch(
+                checked = draft.enabled,
+                enabled = draft.enabled || errors.isEmpty(),
+                onCheckedChange = { onSave(draft.copy(enabled = it)) },
+            )
         }
 
         OutlinedTextField(
@@ -125,7 +144,7 @@ fun VoiceMqttSettingsContent(
             value = portText,
             onValueChange = { typed ->
                 portText = typed.filter { it.isDigit() }.take(5)
-                draft = draft.copy(port = portText.toIntOrNull() ?: -1)
+                draft = draft.copy(port = portText.toIntOrNull() ?: VoiceConnectionDefaults.UNSET_PORT)
             },
             label = { Text(stringResource(R.string.voice_field_port)) },
             singleLine = true,

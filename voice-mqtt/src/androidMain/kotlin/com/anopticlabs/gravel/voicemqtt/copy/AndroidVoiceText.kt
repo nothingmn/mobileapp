@@ -35,6 +35,7 @@ class AndroidVoiceText(context: Context) : VoiceText {
             VoiceKeys.STATUS_CONNECTED -> R.string.voice_status_connected
             VoiceKeys.STATUS_CONNECTING -> R.string.voice_status_connecting
             VoiceKeys.STATUS_DISCONNECTED -> R.string.voice_status_disconnected
+            VoiceKeys.HINT_CONNECTION_UNSET -> R.string.voice_hint_connection_unset
             VoiceKeys.TOGGLE_LOOP_TITLE -> R.string.voice_toggle_loop_title
             VoiceKeys.TOGGLE_LOOP_DESCRIPTION -> R.string.voice_toggle_loop_description
             VoiceKeys.FIELD_BROKER_ADDRESS -> R.string.voice_field_broker_address
@@ -104,6 +105,7 @@ class AndroidVoiceText(context: Context) : VoiceText {
             VoiceKeys.SPOKEN_TEST_MESSAGE -> R.string.voice_spoken_test_message
             VoiceKeys.ERROR_HOST_BLANK -> R.string.voice_error_host_blank
             VoiceKeys.ERROR_HOST_SPACE -> R.string.voice_error_host_space
+            VoiceKeys.ERROR_PORT_BLANK -> R.string.voice_error_port_blank
             VoiceKeys.ERROR_PORT_RANGE -> R.string.voice_error_port_range
             VoiceKeys.ERROR_TOPIC_BLANK -> R.string.voice_error_topic_blank
             VoiceKeys.ERROR_TOPIC_EDGE_SPACE -> R.string.voice_error_topic_edge_space

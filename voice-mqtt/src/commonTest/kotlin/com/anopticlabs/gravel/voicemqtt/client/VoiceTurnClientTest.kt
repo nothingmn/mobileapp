@@ -57,10 +57,10 @@ class VoiceTurnClientTest {
 
     private val settings = VoiceSettings(
         enabled = true,
-        host = "10.0.0.157",
+        host = "broker.example",
         port = 1883,
-        ingressTopic = "agentry/v1/gateway/req/voicessistant",
-        egressTopic = "agentry/v1/gateway/resp/voicessistant/#",
+        ingressTopic = "example/topic",
+        egressTopic = "example/topic/#",
     )
 
     private var clock = 1_000_000L

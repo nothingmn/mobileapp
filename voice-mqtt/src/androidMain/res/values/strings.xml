@@ -12,6 +12,7 @@
     <string name="voice_status_connected">Connected to %1$s</string>
     <string name="voice_status_connecting">Connecting to %1$s…</string>
     <string name="voice_status_disconnected">Not connected</string>
+    <string name="voice_hint_connection_unset">This build has no broker. Enter your own MQTT broker\'s address and port before turning the voice loop on.</string>
     <string name="voice_toggle_loop_title">Voice assistant</string>
     <string name="voice_toggle_loop_description">Publish every transcribed recording and speak the answer</string>
     <string name="voice_field_broker_address">Broker address</string>
@@ -96,6 +97,7 @@
     <!-- Inline field errors, checked before the save button is offered. -->
     <string name="voice_error_host_blank">Enter the broker\'s address</string>
     <string name="voice_error_host_space">An address cannot contain a space</string>
+    <string name="voice_error_port_blank">Enter the broker\'s port</string>
     <string name="voice_error_port_range">A port is between 1 and 65535</string>
     <string name="voice_error_topic_blank">Enter a topic</string>
     <string name="voice_error_topic_edge_space">A topic cannot start or end with a space</string>

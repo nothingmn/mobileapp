@@ -208,11 +208,11 @@ class VoiceCopyKeysTest {
         literalPattern.findAll(line).map { it.groupValues[1] }.toList()
     /**
      * Whether a literal reads as copy someone would see: a space between words, or sentence punctuation. A tag
-     * (`AndroidSpeechOutput`), a topic (`agentry/v1/...`) and a JSON key are not.
+     * (`AndroidSpeechOutput`), a topic or an address with a path in it (`example/topic`) and a JSON key are not.
      */
     private fun looksLikeUserCopy(literal: String): Boolean {
         if (literal.isBlank()) return false
         val words = literal.count { it == ' ' }
-        return words > 0 && literal.any { it.isLetter() } && !literal.startsWith("agentry/")
+        return words > 0 && literal.any { it.isLetter() } && !literal.contains('/')
     }
 }

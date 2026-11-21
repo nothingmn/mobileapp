@@ -2,13 +2,7 @@ package com.anopticlabs.gravel.voicemqtt.settings
 
 import com.anopticlabs.gravel.voicemqtt.copy.VoiceCopy
 import com.anopticlabs.gravel.voicemqtt.copy.VoiceKeys
-import com.anopticlabs.gravel.voicemqtt.protocol.DEFAULT_EGRESS_TOPIC
-import com.anopticlabs.gravel.voicemqtt.protocol.DEFAULT_INGRESS_TOPIC
 import com.anopticlabs.gravel.voicemqtt.protocol.VoiceTopics
-
-/** The broker defaults from the protocol document. Every one of them is editable in Settings. */
-const val DEFAULT_BROKER_HOST = "10.0.0.157"
-const val DEFAULT_BROKER_PORT = 1883
 
 /** A field the settings screen can show an inline error against. */
 enum class VoiceField { HOST, PORT, INGRESS_TOPIC, EGRESS_TOPIC }
@@ -20,8 +14,12 @@ enum class VoiceField { HOST, PORT, INGRESS_TOPIC, EGRESS_TOPIC }
 data class PreferredDevice(val address: String, val name: String)
 
 /**
- * Everything the client needs at connect time. Nothing here is compiled in beyond the defaults: the host,
- * port, TLS, credentials and both topics are the user's, and changing any of them reconnects the client.
+ * Everything the client needs at connect time.
+ *
+ * Nothing here is compiled in: the host, port, TLS, credentials and both topics are the user's, and changing
+ * any of them reconnects the client. A build may *pre-fill* the connection fields by baking values in (see
+ * [BakedVoiceDefaults] and [VoiceConnectionDefaults]); a build that bakes nothing — which is what this
+ * repository ships — leaves them empty, and [errors] then says so field by field until the user supplies them.
  *
  * The two speaking switches are independent, and neither is forced:
  * - [speakReplies] (default on) is whether replies are spoken at all. Off is the user's own choice, so the
@@ -34,15 +32,15 @@ data class PreferredDevice(val address: String, val name: String)
  */
 data class VoiceSettings(
     val enabled: Boolean = false,
-    val host: String = DEFAULT_BROKER_HOST,
-    val port: Int = DEFAULT_BROKER_PORT,
+    val host: String = "",
+    val port: Int = VoiceConnectionDefaults.UNSET_PORT,
     val tls: Boolean = false,
     /** Off by default: a self-signed broker is a deliberate choice, never a silent fallback. */
     val trustSelfSigned: Boolean = false,
     val username: String = "",
     val password: String = "",
-    val ingressTopic: String = DEFAULT_INGRESS_TOPIC,
-    val egressTopic: String = DEFAULT_EGRESS_TOPIC,
+    val ingressTopic: String = "",
+    val egressTopic: String = "",
     val speakReplies: Boolean = true,
     val headsetOnly: Boolean = true,
     /** The one Bluetooth device replies may be spoken on; null means any of them. */
@@ -66,7 +64,11 @@ data class VoiceSettings(
     fun errors(): Map<VoiceField, VoiceCopy> = buildMap {
         if (host.isBlank()) put(VoiceField.HOST, VoiceCopy(VoiceKeys.ERROR_HOST_BLANK))
         else if (host.any { it.isWhitespace() }) put(VoiceField.HOST, VoiceCopy(VoiceKeys.ERROR_HOST_SPACE))
-        if (port !in 1..65535) put(VoiceField.PORT, VoiceCopy(VoiceKeys.ERROR_PORT_RANGE))
+        // No port at all is a different mistake from a port that is not one, and the screen says which.
+        when {
+            port == VoiceConnectionDefaults.UNSET_PORT -> put(VoiceField.PORT, VoiceCopy(VoiceKeys.ERROR_PORT_BLANK))
+            port !in 1..65535 -> put(VoiceField.PORT, VoiceCopy(VoiceKeys.ERROR_PORT_RANGE))
+        }
         VoiceTopics.refusal(ingressTopic, allowWildcard = false)?.let { put(VoiceField.INGRESS_TOPIC, it) }
         VoiceTopics.refusal(egressTopic, allowWildcard = true)?.let { put(VoiceField.EGRESS_TOPIC, it) }
     }

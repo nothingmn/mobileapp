@@ -3,8 +3,6 @@ package com.anopticlabs.gravel.voicemqtt.settings
 import android.content.Context
 import android.content.SharedPreferences
 import co.touchlab.kermit.Logger
-import com.anopticlabs.gravel.voicemqtt.protocol.DEFAULT_EGRESS_TOPIC
-import com.anopticlabs.gravel.voicemqtt.protocol.DEFAULT_INGRESS_TOPIC
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,8 +18,17 @@ import java.util.UUID
  *
  * [VoiceSettings.speakReplies] and [VoiceSettings.headsetOnly] are independent switches with an OFF position
  * each, stored like any other value and read back as the user left them: nothing here forces a value.
+ *
+ * The connection fields — address, port, TLS, both topics — are read through [VoiceConnectionDefaults], so a
+ * value the user saved wins over a value [baked] into the build, and a build that baked in nothing leaves them
+ * empty for the user to fill in. A save writes every one of them, which is what makes the user's answer final
+ * from the first save onwards.
  */
-class VoiceSettingsStore(context: Context) {
+class VoiceSettingsStore(
+    context: Context,
+    /** What this build baked in; injected so the rule can be exercised without a phone or a rebuild. */
+    private val baked: BakedVoiceDefaults = bakedVoiceDefaults(),
+) {
 
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val secrets = KeystoreSecret()
@@ -49,16 +56,28 @@ class VoiceSettingsStore(context: Context) {
 
     private fun read(): VoiceSettings {
         val speaking = VoiceSpeakingSettings.read(prefs.all)
+        // Fetched with "has the user ever saved this field?", not "is the value non-null?": a field the user
+        // emptied stays empty, and only a field the phone has never held is filled from what the build baked in.
+        val connection = VoiceConnectionDefaults.resolve(
+            stored = StoredConnectionValues(
+                host = storedString(KEY_HOST),
+                port = if (prefs.contains(KEY_PORT)) prefs.getInt(KEY_PORT, VoiceConnectionDefaults.UNSET_PORT) else null,
+                tls = if (prefs.contains(KEY_TLS)) prefs.getBoolean(KEY_TLS, false) else null,
+                requestTopic = storedString(KEY_INGRESS),
+                responseTopic = storedString(KEY_EGRESS),
+            ),
+            baked = baked,
+        )
         return VoiceSettings(
             enabled = prefs.getBoolean(KEY_ENABLED, false),
-            host = prefs.getString(KEY_HOST, null) ?: DEFAULT_BROKER_HOST,
-            port = prefs.getInt(KEY_PORT, DEFAULT_BROKER_PORT),
-            tls = prefs.getBoolean(KEY_TLS, false),
+            host = connection.host,
+            port = connection.port,
+            tls = connection.tls,
             trustSelfSigned = prefs.getBoolean(KEY_TRUST_SELF_SIGNED, false),
             username = prefs.getString(KEY_USERNAME, "").orEmpty(),
             password = secrets.open(prefs.getString(KEY_PASSWORD, null)).orEmpty(),
-            ingressTopic = prefs.getString(KEY_INGRESS, null) ?: DEFAULT_INGRESS_TOPIC,
-            egressTopic = prefs.getString(KEY_EGRESS, null) ?: DEFAULT_EGRESS_TOPIC,
+            ingressTopic = connection.requestTopic,
+            egressTopic = connection.responseTopic,
             speakReplies = speaking.speakReplies,
             headsetOnly = speaking.headsetOnly,
             preferredDevice = speaking.preferredDevice,
@@ -67,6 +86,10 @@ class VoiceSettingsStore(context: Context) {
             offlineOnly = speaking.offlineOnly,
         )
     }
+
+    /** The stored string — blank included, because clearing a field is the user's choice — or null if never saved. */
+    private fun storedString(key: String): String? =
+        if (prefs.contains(key)) prefs.getString(key, "").orEmpty() else null
 
     private fun store(next: VoiceSettings) {
         val editor = prefs.edit()

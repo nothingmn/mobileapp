@@ -16,6 +16,7 @@ object VoiceKeys {
     const val STATUS_CONNECTED = "voice_status_connected"
     const val STATUS_CONNECTING = "voice_status_connecting"
     const val STATUS_DISCONNECTED = "voice_status_disconnected"
+    const val HINT_CONNECTION_UNSET = "voice_hint_connection_unset"
     const val TOGGLE_LOOP_TITLE = "voice_toggle_loop_title"
     const val TOGGLE_LOOP_DESCRIPTION = "voice_toggle_loop_description"
     const val FIELD_BROKER_ADDRESS = "voice_field_broker_address"
@@ -95,6 +96,7 @@ object VoiceKeys {
     // Inline field errors, checked before the save button is offered.
     const val ERROR_HOST_BLANK = "voice_error_host_blank"
     const val ERROR_HOST_SPACE = "voice_error_host_space"
+    const val ERROR_PORT_BLANK = "voice_error_port_blank"
     const val ERROR_PORT_RANGE = "voice_error_port_range"
     const val ERROR_TOPIC_BLANK = "voice_error_topic_blank"
     const val ERROR_TOPIC_EDGE_SPACE = "voice_error_topic_edge_space"
@@ -118,6 +120,7 @@ object VoiceKeys {
         STATUS_CONNECTED,
         STATUS_CONNECTING,
         STATUS_DISCONNECTED,
+        HINT_CONNECTION_UNSET,
         TOGGLE_LOOP_TITLE,
         TOGGLE_LOOP_DESCRIPTION,
         FIELD_BROKER_ADDRESS,
@@ -187,6 +190,7 @@ object VoiceKeys {
         SPOKEN_TEST_MESSAGE,
         ERROR_HOST_BLANK,
         ERROR_HOST_SPACE,
+        ERROR_PORT_BLANK,
         ERROR_PORT_RANGE,
         ERROR_TOPIC_BLANK,
         ERROR_TOPIC_EDGE_SPACE,
