@@ -15,6 +15,7 @@ import com.anopticlabs.gravel.firmware.FirmwarePickerRoute
 import com.anopticlabs.gravel.firmware.FirmwarePickerScreen
 import com.anopticlabs.gravel.ui.TextModelsScreen
 import com.anopticlabs.gravel.ui.rememberNotebookTab
+import com.anopticlabs.gravel.ui.rememberTextToSpeechSettings
 import com.anopticlabs.gravel.ui.rememberVoiceMqttSettings
 import io.rebble.libpebblecommon.locker.AppType
 import kotlinx.serialization.Serializable
@@ -140,6 +141,10 @@ object PebbleNavBarRoutes {
     @Serializable
     data object VoiceMqttRoute : NavBarRoute
 
+    // Gravel: Settings > AI > Text to Speech, offered under the same flag and for the same reason.
+    @Serializable
+    data object TextToSpeechRoute : NavBarRoute
+
     @Serializable
     data class WatchSettingsCategoryRoute(val section: String, val topLevelType: String) : NavBarRoute
 }
@@ -238,6 +243,10 @@ fun NavGraphBuilder.addNavBarRoutes(
     composableWithAnimations<PebbleNavBarRoutes.VoiceMqttRoute>(viewModel) {
         // Null with the flag off: the route exists for the saved navigation state and draws nothing.
         rememberVoiceMqttSettings()?.Screen(topBarParams)
+    }
+    composableWithAnimations<PebbleNavBarRoutes.TextToSpeechRoute>(viewModel) {
+        // The same: nothing binds the engine with the flag off, so nothing is drawn.
+        rememberTextToSpeechSettings()?.Screen(topBarParams)
     }
     composableWithAnimations<PebbleNavBarRoutes.BatterySettingsRoute>(viewModel) {
         BatterySettingsScreen(nav, topBarParams)

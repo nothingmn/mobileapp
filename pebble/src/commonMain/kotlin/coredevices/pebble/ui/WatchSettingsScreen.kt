@@ -119,9 +119,11 @@ import com.anopticlabs.gravel.ui.fontGrowth
 import com.anopticlabs.gravel.ui.phoneCalendarFirstStep
 import com.anopticlabs.gravel.ui.phoneCalendarRefusalText
 import com.anopticlabs.gravel.ui.rememberNotebookTab
-import com.anopticlabs.gravel.ui.rememberVoiceMqttSettings
 import com.anopticlabs.gravel.ui.rememberTextModels
+import com.anopticlabs.gravel.ui.rememberTextToSpeechSettings
+import com.anopticlabs.gravel.ui.rememberVoiceMqttSettings
 import com.anopticlabs.gravel.ui.textModelsSummary
+import com.anopticlabs.gravel.ui.textToSpeechItemShown
 import com.anopticlabs.gravel.weather.WeatherConsentDialog
 import com.anopticlabs.gravel.ui.notebookWatchAppSettings
 import com.russhwolf.settings.Settings
@@ -630,6 +632,8 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
     val notebookTab = rememberNotebookTab()
     // Gravel: null in a build without the voice loop, which is what keeps its Settings entry out entirely.
     val voiceMqtt = rememberVoiceMqttSettings()
+    // Gravel: the same for the text-to-speech engine, which is bound by the same module.
+    val ttsSettings = rememberTextToSpeechSettings()
     val notebookShown = notebookTab?.shown?.collectAsState()?.value == true
     val deepLinks = koinInject<PebbleDeepLinkHandler>()
     val notebookGuideDone = notebookTab?.takeIf { it.supported }?.setupGuide?.collectAsState()?.value?.done == true
@@ -1975,6 +1979,21 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                     section = Section.AI,
                     action = { nav.navigateTo(PebbleNavBarRoutes.TextModelsRoute) },
                 ) } },
+                // Gravel: the phone's own text-to-speech engine, its voice, and whether replies may leave the
+                // phone at all. Offered only where an engine is bound, which is what keeps it out of a build
+                // with VOICE_MQTT_ENABLED off.
+                ttsSettings?.takeIf { textToSpeechItemShown(it.supported) }?.let {
+                    navBarNav?.let { nav ->
+                        basicSettingsActionItem(
+                            title = "Text to Speech",
+                            description = "The engine and voice that speak the assistant's replies, and offline speech",
+                            topLevelType = TopLevelType.Phone,
+                            section = Section.AI,
+                            keywords = "text to speech tts voice engine offline local speaker",
+                            action = { nav.navigateTo(PebbleNavBarRoutes.TextToSpeechRoute) },
+                        )
+                    }
+                },
                 basicSettingsDropdownItem(
                     id = OfflineSpeechRecognition,
                     title = "Offline Speech Recognition",

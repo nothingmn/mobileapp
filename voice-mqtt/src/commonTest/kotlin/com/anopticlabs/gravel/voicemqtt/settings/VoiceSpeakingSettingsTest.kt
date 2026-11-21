@@ -89,4 +89,50 @@ class VoiceSpeakingSettingsTest {
         assertFalse(printed.contains("hunter2"))
         assertFalse(printed.contains("someone"))
     }
+
+    @Test
+    fun aFileWrittenBeforeTheEngineChoicesKeepsBothSwitchesTheDeviceAndGoesOfflineInSpeech() {
+        // Exactly what 711716a0 wrote on this phone: the two switches and the pinned headset, and no engine,
+        // voice or offline-speech key at all.
+        val speaking = VoiceSpeakingSettings.read(
+            mapOf(
+                VoiceSpeakingSettings.KEY_SPEAK_REPLIES to true,
+                VoiceSpeakingSettings.KEY_HEADSET_ONLY to false,
+                VoiceSpeakingSettings.KEY_PREFERRED_ADDRESS to "AA:BB:CC:DD:EE:01",
+                VoiceSpeakingSettings.KEY_PREFERRED_NAME to "Jabra Elite",
+            ),
+        )
+        assertTrue(speaking.speakReplies, "the switch the user left on stays on")
+        assertFalse(speaking.headsetOnly, "the switch the user turned off stays off")
+        assertEquals(PreferredDevice("AA:BB:CC:DD:EE:01", "Jabra Elite"), speaking.preferredDevice, "the pin survives")
+        assertEquals(null, speaking.ttsEngine, "no engine was ever chosen: the phone's default is used")
+        assertEquals(null, speaking.preferredVoice, "and the best offline voice for the language")
+        assertTrue(speaking.offlineOnly, "a file written before the switch existed reads back as offline only")
+    }
+
+    @Test
+    fun aChosenEngineAndVoiceAreReadBack() {
+        val speaking = VoiceSpeakingSettings.read(
+            mapOf(
+                VoiceSpeakingSettings.KEY_TTS_ENGINE to "com.samsung.android.ptts.enus",
+                VoiceSpeakingSettings.KEY_PREFERRED_VOICE to "en-us-x-sfg#female_1-local",
+                VoiceSpeakingSettings.KEY_OFFLINE_ONLY to false,
+            ),
+        )
+        assertEquals("com.samsung.android.ptts.enus", speaking.ttsEngine)
+        assertEquals("en-us-x-sfg#female_1-local", speaking.preferredVoice)
+        assertFalse(speaking.offlineOnly, "the user's own choice of the looser mode is kept")
+    }
+
+    @Test
+    fun aBlankEngineChoiceReadsBackAsThePhonesDefault() {
+        val speaking = VoiceSpeakingSettings.read(
+            mapOf(
+                VoiceSpeakingSettings.KEY_TTS_ENGINE to "",
+                VoiceSpeakingSettings.KEY_PREFERRED_VOICE to "  ",
+            ),
+        )
+        assertEquals(null, speaking.ttsEngine)
+        assertEquals(null, speaking.preferredVoice)
+    }
 }

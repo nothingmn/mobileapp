@@ -45,6 +45,20 @@ data class VoiceSettings(
     val headsetOnly: Boolean = true,
     /** The one Bluetooth device replies may be spoken on; null means any of them. */
     val preferredDevice: PreferredDevice? = null,
+    /**
+     * The text-to-speech engine replies are synthesised with, by package-qualified name (`Voice.name` of an
+     * engine, as `TextToSpeech.getEngines()` lists it). Null means the phone's own default engine. Whatever the
+     * engine, the voice rule stands: only a voice that synthesises on the phone may speak.
+     */
+    val ttsEngine: String? = null,
+    /** The one voice within that engine, by the engine's own name for it; null picks the best offline one. */
+    val preferredVoice: String? = null,
+    /**
+     * "Offline speech", default on: only a voice that synthesises on the phone may speak, and every utterance
+     * asks the engine for embedded synthesis. Off permits a voice that sends the text to the engine's cloud,
+     * which the settings screen states plainly before it is turned off.
+     */
+    val offlineOnly: Boolean = true,
 ) {
     /** Field-keyed inline errors; empty means the settings may be used. */
     fun errors(): Map<VoiceField, String> = buildMap {
@@ -71,5 +85,6 @@ data class VoiceSettings(
         "VoiceSettings(enabled=$enabled, server=$serverUri, tls=$tls, trustSelfSigned=$trustSelfSigned, " +
             "username=${if (username.isEmpty()) "" else "<set>"}, password=${if (password.isEmpty()) "" else "<set>"}, " +
             "ingress=$ingressTopic, egress=$egressTopic, speakReplies=$speakReplies, headsetOnly=$headsetOnly, " +
-            "headset=${preferredDevice?.name ?: "any"})"
+            "headset=${preferredDevice?.name ?: "any"}, engine=${ttsEngine ?: "system default"}, " +
+            "voice=${preferredVoice ?: "automatic"}, offlineOnly=$offlineOnly)"
 }

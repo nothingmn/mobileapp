@@ -84,6 +84,13 @@ class VoiceMqttController(
         return stored
     }
 
+    /**
+     * Stores a change that only affects speaking — the engine, the voice, offline speech. The broker
+     * connection is left alone: none of those values is used by the transport, so reconnecting for them would
+     * drop a live session for nothing.
+     */
+    fun saveSpeaking(next: VoiceSettings): VoiceSettings = store.update { next }
+
     /** A transcribed turn; the requestId it was published under, or null when it was not sent. */
     suspend fun publishTranscript(text: String): String? {
         val current = store.settings.value
@@ -142,11 +149,13 @@ class VoiceMqttController(
  * What the app builds once, when the VOICE_MQTT_ENABLED flag is on. [micBusy] is the app's own answer to
  * "is the microphone recording right now", which is what keeps a reply from bleeding into a recording.
  * [speechRuns] is the speaker's own record of what it did with each sentence, so a reply that was held back is
- * a visible fact on the settings screen instead of a silence.
+ * a visible fact on the settings screen instead of a silence. [speech] is the speaker itself, so Settings >
+ * AI > Text to Speech can list the engines and voices and apply a change without an app restart.
  */
 class VoiceMqttEngine(
     val controller: VoiceMqttController,
     val gate: BluetoothAudioGate,
+    val speech: AndroidSpeechOutput,
     val speechRuns: StateFlow<List<VoiceSpeechRun>>,
 )
 
@@ -171,6 +180,7 @@ fun buildVoiceMqttEngine(
     return VoiceMqttEngine(
         controller = VoiceMqttController(store = store, transport = transport, speaker = speaker, scope = scope),
         gate = gate,
+        speech = speaker,
         speechRuns = speaker.runs,
     )
 }

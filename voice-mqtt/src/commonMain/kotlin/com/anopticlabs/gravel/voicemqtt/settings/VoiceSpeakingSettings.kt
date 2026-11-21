@@ -1,13 +1,16 @@
 package com.anopticlabs.gravel.voicemqtt.settings
 
 /**
- * The three speaking settings as they sit in the preferences file, plus the one migration an install from the
- * first increment needs.
+ * The speaking settings as they sit in the preferences file, plus the migrations an older install needs.
  *
- * That build stored a headset choice but no switch at all: replies were spoken only with a Bluetooth output
- * connected and the settings screen showed the switch permanently on. So a file carrying only the old keys
- * reads back as *speak replies, headset only, that device* — exactly the behaviour it had — rather than as the
- * new defaults with the user's chosen device thrown away. The legacy keys are removed by the next save.
+ * That first build stored a headset choice but no switch at all: replies were spoken only with a Bluetooth
+ * output connected and the settings screen showed the switch permanently on. So a file carrying only the old
+ * keys reads back as *speak replies, headset only, that device* — exactly the behaviour it had — rather than as
+ * the new defaults with the user's chosen device thrown away. The legacy keys are removed by the next save.
+ *
+ * The engine and voice keys arrived with the on-device privacy rule. A file written before them has neither, so
+ * it reads back as *the phone's default engine, the best offline voice* — the safer of the two, because a
+ * default engine's network voices are still refused by [com.anopticlabs.gravel.voicemqtt.speech.VoiceSelection].
  *
  * Kept in common code, with the values handed in as a plain map, so a host test can prove what a legacy file
  * reads back as without an Android preferences file.
@@ -18,6 +21,9 @@ object VoiceSpeakingSettings {
     const val KEY_HEADSET_ONLY = "headsetOnly"
     const val KEY_PREFERRED_ADDRESS = "preferredAddress"
     const val KEY_PREFERRED_NAME = "preferredName"
+    const val KEY_TTS_ENGINE = "ttsEngine"
+    const val KEY_PREFERRED_VOICE = "preferredVoice"
+    const val KEY_OFFLINE_ONLY = "offlineOnly"
 
     /** The first increment's keys: its headset choice and the switch it never wrote. */
     const val LEGACY_KEY_SPEAK_ONLY_WITH_HEADSET = "speakOnlyWithHeadset"
@@ -29,6 +35,9 @@ object VoiceSpeakingSettings {
         val speakReplies: Boolean,
         val headsetOnly: Boolean,
         val preferredDevice: PreferredDevice?,
+        val ttsEngine: String? = null,
+        val preferredVoice: String? = null,
+        val offlineOnly: Boolean = true,
     )
 
     fun read(stored: Map<String, Any?>): Speaking = Speaking(
@@ -37,6 +46,10 @@ object VoiceSpeakingSettings {
             ?: (stored[LEGACY_KEY_SPEAK_ONLY_WITH_HEADSET] as? Boolean)
             ?: true,
         preferredDevice = preferred(stored),
+        ttsEngine = (stored[KEY_TTS_ENGINE] as? String)?.takeIf { it.isNotBlank() },
+        preferredVoice = (stored[KEY_PREFERRED_VOICE] as? String)?.takeIf { it.isNotBlank() },
+        // A file written before the switch existed reads back as ON: the stricter choice, not a looser default.
+        offlineOnly = stored[KEY_OFFLINE_ONLY] as? Boolean ?: true,
     )
 
     private fun preferred(stored: Map<String, Any?>): PreferredDevice? {

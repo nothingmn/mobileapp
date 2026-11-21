@@ -1,6 +1,7 @@
 package com.anopticlabs.gravel.voicemqtt.settings
 
 import android.content.Context
+import android.content.SharedPreferences
 import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.voicemqtt.protocol.DEFAULT_EGRESS_TOPIC
 import com.anopticlabs.gravel.voicemqtt.protocol.DEFAULT_INGRESS_TOPIC
@@ -61,6 +62,9 @@ class VoiceSettingsStore(context: Context) {
             speakReplies = speaking.speakReplies,
             headsetOnly = speaking.headsetOnly,
             preferredDevice = speaking.preferredDevice,
+            ttsEngine = speaking.ttsEngine,
+            preferredVoice = speaking.preferredVoice,
+            offlineOnly = speaking.offlineOnly,
         )
     }
 
@@ -84,6 +88,11 @@ class VoiceSettingsStore(context: Context) {
             editor.putString(VoiceSpeakingSettings.KEY_PREFERRED_ADDRESS, preferred.address)
                 .putString(VoiceSpeakingSettings.KEY_PREFERRED_NAME, preferred.name)
         }
+        // The engine and voice choices are stored only when set, so "the phone's default engine" is the absence
+        // of a value rather than the name of whichever engine happened to be default when the app was installed.
+        editor.putStringOrRemove(VoiceSpeakingSettings.KEY_TTS_ENGINE, next.ttsEngine)
+            .putStringOrRemove(VoiceSpeakingSettings.KEY_PREFERRED_VOICE, next.preferredVoice)
+            .putBoolean(VoiceSpeakingSettings.KEY_OFFLINE_ONLY, next.offlineOnly)
         // The first increment's keys are migrated on read and gone after the first save, so a value it wrote
         // can never come back over a choice the user has since changed.
         editor.remove(VoiceSpeakingSettings.LEGACY_KEY_HEADSET_ADDRESS)
@@ -120,3 +129,7 @@ class VoiceSettingsStore(context: Context) {
         const val KEY_EGRESS = "egressTopic"
     }
 }
+
+/** Stores [value] under [key], or clears the key when there is no value to store. */
+private fun SharedPreferences.Editor.putStringOrRemove(key: String, value: String?): SharedPreferences.Editor =
+    if (value.isNullOrBlank()) remove(key) else putString(key, value)

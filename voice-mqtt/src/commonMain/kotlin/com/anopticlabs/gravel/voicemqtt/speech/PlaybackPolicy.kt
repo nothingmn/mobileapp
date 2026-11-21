@@ -18,6 +18,19 @@ enum class SpeechSuppression {
 
     /** Headset only is on, Bluetooth outputs are connected, but not the one the user pinned. */
     PREFERRED_DEVICE_NOT_CONNECTED,
+
+    /**
+     * No voice that synthesises on the phone is installed for the language of the replies. The privacy rule
+     * forbids a network voice, so the reply is recorded and not spoken — see [VoiceSelection].
+     */
+    NO_OFFLINE_VOICE,
+
+    /**
+     * Offline speech is off and the engine still offered nothing usable — no voice for the language, no voice
+     * at all, or a voice it would not apply. Recorded for the same reason: a silence with a reason, never a
+     * silence with none.
+     */
+    NO_USABLE_VOICE,
 }
 
 /** What the loop does with a sentence, decided at the moment of speaking. */
@@ -62,6 +75,9 @@ object PlaybackPolicy {
         SpeechSuppression.NO_BLUETOOTH_OUTPUT -> "reply not spoken: no Bluetooth audio output is connected"
         SpeechSuppression.PREFERRED_DEVICE_NOT_CONNECTED ->
             "reply not spoken: the chosen Bluetooth device is not connected"
+        SpeechSuppression.NO_OFFLINE_VOICE ->
+            "reply not spoken: no voice that works offline is installed for this language"
+        SpeechSuppression.NO_USABLE_VOICE -> "reply not spoken: the engine has no voice it can use for this language"
     }
 
     /** The sentence the settings screen shows under the switches, in plain language. */
@@ -70,5 +86,9 @@ object PlaybackPolicy {
         SpeechSuppression.NO_BLUETOOTH_OUTPUT -> "No Bluetooth output was connected, so the reply was not played."
         SpeechSuppression.PREFERRED_DEVICE_NOT_CONNECTED ->
             "Your chosen Bluetooth device was not connected, so the reply was not played."
+        SpeechSuppression.NO_OFFLINE_VOICE ->
+            "No voice that works offline is installed, so the reply was not played."
+        SpeechSuppression.NO_USABLE_VOICE ->
+            "The speech engine had no voice it could use, so the reply was not played."
     }
 }

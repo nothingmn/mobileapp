@@ -158,4 +158,62 @@ class SettingsSectionsTest {
 
         assertEquals(listOf("whisper-small-en"), seen.last())
     }
+
+    @Test
+    fun textToSpeechIsListedUnderAiAndOnlyWhereAnEngineIsBound() {
+        // The Settings item is an AI entry, shown only where the Android side bound the speech engine; with
+        // VOICE_MQTT_ENABLED off nothing is bound, so the item never enters the list and AI stays out of the
+        // top level unless something else puts it there.
+        assertTrue(textToSpeechItemShown(supported = true))
+        assertFalse(textToSpeechItemShown(supported = false))
+        assertTrue(Section.AI in topLevelSections(setOf(Section.AI)))
+        assertFalse(Section.AI in topLevelSections(emptySet()))
+        assertFalse(Section.AI in topLevelSections(setOf(Section.Speech)))
+    }
+
+    @Test
+    fun theSwitchIsNamedForWhatItDoesAndWarnsOnlyWhenItIsOff() {
+        assertEquals("Offline speech", OFFLINE_SPEECH_TITLE)
+        assertTrue(OFFLINE_SPEECH_SUBTITLE.contains("never send text to a server"))
+        assertEquals(null, cloudSpeechNote(offlineOnly = true), "nothing to warn about while it is on")
+        val warning = cloudSpeechNote(offlineOnly = false)!!
+        assertTrue(warning.contains("cloud service"), warning)
+        assertTrue(warning.contains("leaves this phone"), warning)
+    }
+
+    @Test
+    fun theScreenSaysWhereTheWordsBecomeSoundInBothModes() {
+        val voice = SpeechVoice("en-us-x-sfg#female_1-local", "en-US", offline = true)
+        val inUse = TextToSpeechFacts(read = true, offlineOnly = true, voices = listOf(voice), inUse = voice)
+        assertTrue(speechInUseLine(inUse)!!.contains("synthesised on this phone"))
+
+        val cloud = SpeechVoice("en-us-x-sfg#female_2-network", "en-US", offline = false)
+        val cloudInUse = TextToSpeechFacts(offlineOnly = false, read = true, voices = listOf(voice, cloud), inUse = cloud)
+        val line = speechInUseLine(cloudInUse)!!
+        assertTrue(line.contains("cloud service"), line)
+        assertTrue(line.contains("leaves this phone"), line)
+
+        // The picker offers only on-phone voices while offline speech is on, and both kinds when it is off.
+        assertEquals(listOf(voice), cloudInUse.copy(offlineOnly = true, inUse = voice).selectableVoices)
+        assertEquals(listOf(voice, cloud), cloudInUse.selectableVoices)
+    }
+
+    @Test
+    fun aStalePinAndNoUsableVoiceAreBothStatedRatherThanLookingFine() {
+        val pinned = TextToSpeechFacts(
+            read = true,
+            voice = "uninstalled-voice",
+            languageLabel = "English",
+            inUse = SpeechVoice("en-us-x-sfg#male_1-local", "en-US", offline = true),
+        )
+        assertTrue(pinnedVoiceNote(pinned)!!.contains("English"))
+
+        val nothing = TextToSpeechFacts(
+            read = true,
+            languageLabel = "English",
+            problem = "No offline voice is installed for English — download one in Android's text-to-speech settings.",
+        )
+        assertEquals(null, nothing.inUse)
+        assertTrue(speechInUseLine(nothing)!!.contains("No offline voice is installed for English"))
+    }
 }

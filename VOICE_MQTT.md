@@ -23,8 +23,11 @@ It may also be set as `voiceMqttEnabled=true` in `local.properties`, or as the e
 
 - `:voice-mqtt` is not a dependency of the app graph at all (`composeApp/build.gradle.kts` adds it only when the
   flag is on), and a no-op stand-in bridge is compiled in place of the real one — so no MQTT client, no speech
-  engine, no settings screen and none of their classes reach the APK. Verified by unzipping a flag-off APK's
-  `classes*.dex`: zero occurrences of `com/anopticlabs/gravel/voicemqtt` and zero of `org/eclipse/paho`;
+  engine, no settings screen implementation and none of their classes reach the APK. Verified by unzipping a
+  flag-off APK's `classes*.dex`: zero occurrences of `com/anopticlabs/gravel/voicemqtt` and zero of
+  `org/eclipse/paho`. `:pebble` still carries the plain settings interfaces and the layout of the Text to Speech
+  page, because they are common code with no engine in them; with nothing bound the lookup returns null, the
+  Settings item never enters the list and the route draws nothing;
 - nothing binds the two seams, so `VoiceMqttSettings` and `VoiceTurnSink` have no implementation;
 - the Settings entry is not built at all (`voiceMqtt?.available == true` is false, so the item never enters the
   list, and its section appears only where an item names it);
@@ -126,6 +129,59 @@ Two further rules:
 - **Audio focus is `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`**, taken when the utterance starts and given back when
   it finishes, so a reply never fights music or a podcast.
 
+## Speech output and privacy
+
+The reply is spoken by the phone's own text-to-speech engine, and **which voice** that engine uses is decided
+by one rule, in `VoiceSelection` (common Kotlin, proved by the host tests): the reply may only be spoken by a
+voice that synthesises **on this phone**. Android marks such a voice `Voice.isNetworkConnectionRequired() ==
+false`; the ones marked true send the text to the engine's cloud to be spoken, and are refused. There is no
+fallback to a network voice and none to the engine's own default voice — the engine's default is exactly what
+an unconfigured phone would use, which on this phone is Google's engine with network voices available.
+
+Each utterance also asks the engine for **embedded synthesis**,
+`TextToSpeech.Engine.KEY_FEATURE_EMBEDDED_SYNTHESIS` with network synthesis declined, in the parameters passed
+to `speak`. That hint is not the guarantee: the guarantee is the voice, because an engine that ignores the hint
+still cannot send the text of a voice that needs no connection.
+
+Everything about this lives on **Settings > AI > Text to Speech**, next to Speech Recognition and LLM. The
+Voice Assistant page keeps the broker, the topics and the two speaking switches; it does not hold the engine.
+
+- **Offline speech** (default **on**, the subtitle reads *Local only — voices that never send text to a
+  server*): on means only an on-phone voice may speak, and embedded synthesis is requested with every
+  utterance. Turned off, the engine's cloud voices are allowed, and the screen says so in one sentence under
+  the switch: *replies are then synthesised by this engine's cloud service, so the text of every reply leaves
+  this phone.* Even then a local voice is preferred (it is quicker and works on a plane), and a cloud voice is
+  used only when no local one exists for the language.
+- **Engine**: the installed engines, found with `TextToSpeech.getEngines()` — on this phone
+  `com.google.android.tts` and `com.samsung.android.ptts.enus` — defaulting to the phone's own default engine.
+  The choice is stored and used at the next utterance; changing it rebuilds the engine on the spot, so no app
+  restart is needed, and the broker connection is untouched (none of these values is used by the transport).
+- **Voice**: the voices the chosen engine offers, listed with the on-phone ones first. Only an on-phone voice
+  can be picked while offline speech is on. Default is the best on-phone voice for the phone's language
+  (a different region of the same language is acceptable; a different language is not).
+- **What the screen says**: the voice in use, in words that state where the words become sound ("synthesised on
+  this phone" or "synthesised by the engine's cloud service"); when a pinned voice is gone, that too; and when
+  nothing can speak, the reason.
+
+**When there is no offline voice.** With offline speech on and no on-phone voice for the language, nothing is
+spoken and the phone does not quietly pick a network voice. The screen names the problem in plain words —
+*No offline voice is installed for English — download one in Android's text-to-speech settings* — and each
+reply that could not be spoken is recorded the same way a headset suppression is: one log line and one
+`VoiceSpeechHistory` entry (`NO_OFFLINE_VOICE`), which the Voice Assistant page shows as "Last reply was not
+played: …". With offline speech off, a cloud voice is used if the engine has one for the language; if it has
+none at all, that is recorded with its own reason (`NO_USABLE_VOICE`) rather than left as a silence.
+
+**Verifying it yourself, in airplane mode.** Switch airplane mode on and press **Send test message** on the
+Voice Assistant page. The turn cannot be published, so the loop speaks its failure sentence — and that
+sentence, spoken with no network at all, proves the engine is synthesising on the phone. Nothing it said
+could have reached a server, because there was no connection to reach one. A phone with no offline voice shows
+the same failure as a recorded suppression and the reason on screen instead of a voice.
+
+**An install from the previous increment** keeps both switches and its pinned headset exactly as they were,
+and reads back with offline speech **on**, the phone's default engine and the best on-phone voice for the
+language — the stricter of the two choices, not the looser one. Its engine and voice keys did not exist, so
+nothing is inherited and nothing is guessed.
+
 ## The settings screen
 
 Settings > Voice Assistant holds every value the client uses at connect time, all persisted, all editable:
@@ -180,11 +236,14 @@ protocol says not to build them into v1.
 ./gradlew :voice-mqtt:testAndroidHostTest
 ```
 
-31 tests, no device and no broker needed: the wire contract (five root keys, three frozen literals, UUID v4,
+62 tests, no device and no broker needed: the wire contract (five root keys, three frozen literals, UUID v4,
 1024-character and 8192-byte refusals), the five-minute session reset, the same-requestId retry inside ten
 minutes, reply pairing on `requestId` (a mismatched or empty one is ignored), and the turn as a whole against a
 fake transport (a retry carries the same requestId, a timeout is spoken, a blank transcript is refused with a
 sentence, an error reply never speaks its code). The speaking matrix, the pinned device, the legacy-value
-migration and the paired-but-disconnected case are pure-Kotlin tests over the same task.
+migration and the paired-but-disconnected case are pure-Kotlin tests over the same task, and so is the voice
+rule: a network-only engine is refused, one on-phone voice among network ones is chosen, a language with no
+on-phone voice gives the named reason, a pinned network voice is refused while offline speech is on, and a
+preferences file from the previous increment keeps both switches and its headset and reads back offline-only.
 
 The module's own test task is enough; nothing in it needs `adb`.
