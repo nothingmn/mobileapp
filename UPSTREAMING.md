@@ -20,13 +20,14 @@ Each says how to check it, so a change that would break it is caught while it is
 
 ### One leaf module for the voice feature
 
-`:voice-mqtt` holds the loop: transport, protocol, session, speech, settings, copy. It depends on nothing in this
-repository except libraries, and **nothing it touches imports it from common code**. `:pebble`, `:notebook` and
-`:composeApp`'s common code do not depend on it, because `:pebble` builds for iOS and the MQTT clients are JVM
-libraries. Its Android entry points live in `composeApp/src/{voiceMqttEnabled,voiceMqttDisabled}`.
+`:voice-mqtt` holds the loop: transport, protocol, session, speech, settings, copy. It reads one module of this
+repository — `:notebook`, for the note a reply is filed into — and that edge runs **one way**, through the notebook's
+`NoteReplySink` interface. `:notebook` must never learn that MQTT exists. Nothing else depends on `:voice-mqtt` from
+common code: `:pebble` builds for iOS and the MQTT clients are JVM libraries, so its Android entry points live in
+`composeApp/src/{voiceMqttEnabled,voiceMqttDisabled}`.
 
 *Check:* `grep -rn 'project(":voice-mqtt")' --include='*.kts' .` returns only `composeApp/build.gradle.kts`, and only
-inside the flag-on branch.
+inside the flag-on branch; `grep -rn 'voicemqtt' notebook/build.gradle.kts pebble/build.gradle.kts` returns nothing.
 
 *Why it matters here:* upstream edits `:pebble`, `:notebook` and `:composeApp` constantly. A feature that lives in a
 leaf module upstream has never heard of cannot conflict with their edits; a feature that lives inside their files
