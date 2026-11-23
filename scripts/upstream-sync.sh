@@ -11,7 +11,7 @@
 #   scripts/upstream-sync.sh --all           # --rebase then --verify, printing one verdict
 #
 # Rules it keeps, so that running it twice is safe and running it at all is safe on the operator's checkout:
-#   * the report touches no working tree and no index;
+#   * the report touches no working tree and no index (it fetches, because a report on stale refs is a lie);
 #   * it refuses to act on a branch that is checked out in the main worktree (the operator's branch);
 #   * the scratch worktree is created from origin/master, never from our branch;
 #   * an interrupted cherry-pick is left where it is and reported, never reset or cleaned;
@@ -39,6 +39,12 @@ TEST_TASKS=(
 VOICE_PACKAGE="com/anopticlabs/gravel/voicemqtt"
 
 die() { printf 'upstream-sync: %s\n' "$1" >&2; exit 1; }
+
+# Fresh remote refs, or the numbers describe yesterday. Never fatal: offline still produces the report from what we
+# have, and says so.
+fetch_origin() {
+    git fetch --quiet origin || say "note: git fetch failed; reporting on the refs already here"
+}
 say() { printf '%s\n' "$*"; }
 rule() { printf '%s\n' "-------------------------------------------------------------------------------"; }
 
@@ -383,14 +389,15 @@ cd "$(repo_root)" || exit 1
 
 case "${1:---report}" in
     -h|--help) usage ;;
-    --report)  report ;;
-    --rebase)  git fetch --quiet origin || say "note: fetch failed; reporting on the refs we have"
+    --report)  fetch_origin
+               report ;;
+    --rebase)  fetch_origin
                report
                rule
                rebase ;;
     --verify) [ -n "${2:-}" ] || die "--verify needs the worktree path"
                verify "$2" ;;
-    --all)     git fetch --quiet origin || say "note: fetch failed; reporting on the refs we have"
+    --all)     fetch_origin
                report
                rule
                rebase || exit $?
