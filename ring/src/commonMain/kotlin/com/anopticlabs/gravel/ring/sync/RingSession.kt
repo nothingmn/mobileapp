@@ -1,6 +1,8 @@
 package com.anopticlabs.gravel.ring.sync
 
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.ring.button.RingButtonController
+import com.anopticlabs.gravel.ring.button.RingButtonMapping
 import com.anopticlabs.gravel.ring.protocol.RingAdvertisement
 import com.anopticlabs.gravel.ring.protocol.RingCollection
 import com.anopticlabs.gravel.ring.protocol.RingExchange
@@ -76,6 +78,12 @@ private const val MAX_SAMPLES_PER_MILLI = 16
  * since the ring keeps its collections. A failed exchange (a refusal from the ring, a timeout, bytes outside an
  * exchange or an answer the parser refuses) and the store's or the sink's own exceptions end the session by
  * throwing, after which the caller closes the link.
+ *
+ * A collection carrying the ring's own button report ([RingCollection.button]) is the button being read, not a
+ * note: a tap's collection is handed to [buttons] and kept out of the assembly, so it never becomes a recording and
+ * the sink never sees a one-millisecond recording to drop. A collection whose report says the button is held keeps
+ * its audio, because a hold is still the note it always was. [buttons] is also given the clock while the ring is
+ * still recording, so a gesture whose last part never arrived is settled on the quiet gap rather than lost.
  */
 class RingSession(
     private val connection: RingConnection,
@@ -87,6 +95,8 @@ class RingSession(
     private val exchangeTimeout: Duration = 10.seconds,
     private val pollInterval: Duration = 50.milliseconds,
     private val maxDuration: Duration = 10.minutes,
+    private val buttons: RingButtonController = RingButtonController({ RingButtonMapping() }),
+    private val buttonClock: () -> Long = System::currentTimeMillis,
 ) {
     private val log = Logger.withTag("RingSession")
 
@@ -129,6 +139,23 @@ class RingSession(
                     continue
                 }
                 dropping = null
+                val button = collection.button
+                if (button != null) {
+                    buttons.collection(button, collection.startIndex, collection.final, buttonClock())
+                    if (!button.held) {
+                        // A tap's collection is the ring's own report of its button, not a note. Keeping it out of
+                        // the assembly is what stops a one-millisecond "recording" and the sink's `dropped: 1 ms`
+                        // line: the collection never reaches the Notebook at all. A group the ring left open can
+                        // no longer be continued once this collection is not part of it, which is exactly what the
+                        // assembly would say, so it is dropped here and named in the log.
+                        if (open.isNotEmpty()) {
+                            log.w { "dropped collections ${open.map { it.first }}: a button report came before their last part" }
+                            open = emptyList()
+                        }
+                        store.setNextIndex(next)
+                        continue
+                    }
+                }
                 val read = open + (index to collection)
                 val assembly = assembleRingRecordings(read, maxRecordingMillis)
                 for ((indexes, reason) in assembly.rejected) log.w { "dropped collections $indexes: $reason" }
@@ -153,6 +180,9 @@ class RingSession(
             }
             if (started.elapsedNow() >= maxDuration) return RingSessionEnd.STILL_RECORDING
             delay(pollInterval)
+            // The gesture's collections may have stopped without the ring closing the group; this is the clock that
+            // notices, and it only runs while the ring is still saying it is recording something.
+            buttons.quiet(buttonClock())
         }
     }
 
@@ -179,6 +209,14 @@ class RingSession(
                 "collection $index (start ${collection.startIndex}${if (collection.final) ", final" else ""}): " +
                     "unknown record 0x${record.tag.toString(16)} of ${record.length} bytes, first " +
                     record.head.joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
+            }
+        }
+        // One line per button report the ring made, so the next failure can be read off logcat: what the ring
+        // said, on which collection, and whether it closed the gesture.
+        collection.button?.let { button ->
+            log.d {
+                "collection $index (start ${collection.startIndex}${if (collection.final) ", final" else ""}): " +
+                    "button record: ${if (button.held) "held" else "tapped"}, ${button.count} press(es)"
             }
         }
         return collection

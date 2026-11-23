@@ -533,6 +533,14 @@ val ringClientModule = module {
     // Gravel: the ring's button. Bound here, not behind VOICE_MQTT_ENABLED: it needs no broker and no Notebook.
     single { RingButtonFile(androidContext().noBackupFilesDir) }
     single<RingMediaKeys> { AndroidRingMediaKeys(androidContext()) }
+    // One controller for the process: a gesture's collections are read by the session, one sync at a time, and a
+    // burst must not be split across two of them.
+    single {
+        RingButtonController(
+            mapping = { get<AndroidRingButtonSettings>().mapping },
+            keys = get(),
+        )
+    }
     single {
         AndroidRingButtonSettings(
             file = get(),
@@ -563,8 +571,14 @@ val ringClientModule = module {
             sync = { address, advertisement ->
                 val adapter = checkNotNull(context.getSystemService(BluetoothManager::class.java)?.adapter) { "no Bluetooth" }
                 withRingConnection(adapter.getRemoteDevice(address)) { connection ->
-                    RingSession(connection, positions(address), sink, { System.currentTimeMillis() / 1000 }, MAX_CAPTURE_MILLIS.toLong())
-                        .run(advertisement)
+                    RingSession(
+                        connection,
+                        positions(address),
+                        sink,
+                        { System.currentTimeMillis() / 1000 },
+                        MAX_CAPTURE_MILLIS.toLong(),
+                        buttons = get(),
+                    ).run(advertisement)
                 }
             },
             lastCount = { address -> positions(address).lastCount() },
@@ -580,10 +594,7 @@ val ringClientModule = module {
             lastWait = { sink.lastWait },
             imported = { sink.imported },
             startOver = { address -> positions(address).startOver() },
-            buttons = RingButtonController(
-                mapping = { get<AndroidRingButtonSettings>().mapping },
-                keys = get(),
-            ),
+            buttons = get(),
             marks = ElapsedRealtime,
         )
     }

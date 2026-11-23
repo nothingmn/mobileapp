@@ -2,6 +2,10 @@
 
 package com.anopticlabs.gravel.ring.sync
 
+import com.anopticlabs.gravel.ring.button.RingButtonAction
+import com.anopticlabs.gravel.ring.button.RingButtonController
+import com.anopticlabs.gravel.ring.button.RingButtonMapping
+import com.anopticlabs.gravel.ring.button.RingMediaKeys
 import com.anopticlabs.gravel.ring.protocol.RingAdvertisement
 import com.anopticlabs.gravel.ring.protocol.RingProtocolException
 import com.anopticlabs.gravel.ring.protocol.bytes
@@ -30,8 +34,22 @@ class RingSessionTest {
 
     private fun collectionReads() = ring.reads.filter { it and 0xFFFF_0000L == 0x4002_0000L }.map { (it and 0xFFFF).toInt() }
 
-    private fun TestScope.session(maxRecordingMillis: Long = 5 * 60 * 1000L) =
-        RingSession(ring, store, sink, { 1_900_000_000 }, maxRecordingMillis, testScheduler.timeSource)
+    private val keys = mutableListOf<RingButtonAction>()
+
+    /** The session, with the button's keys collected in [keys]; the mapping defaults to the switch on. */
+    private fun TestScope.session(
+        maxRecordingMillis: Long = 5 * 60 * 1000L,
+        mapping: RingButtonMapping = RingButtonMapping(enabled = true),
+    ) = RingSession(
+        ring,
+        store,
+        sink,
+        { 1_900_000_000 },
+        maxRecordingMillis,
+        testScheduler.timeSource,
+        buttons = RingButtonController({ mapping }, RingMediaKeys { keys += it }),
+        buttonClock = { testScheduler.currentTime },
+    )
 
     private fun ringHolds(vararg parts: Pair<Int, ByteArray>) {
         parts.forEach { (index, bytes) -> ring.collections[index] = bytes }
@@ -274,6 +292,82 @@ class RingSessionTest {
 
         assertFailsWith<RingProtocolException> { session().run(idle) }
         assertEquals(emptyList(), ring.reads)
+    }
+
+    @Test
+    fun aTapsCollectionIsTheButtonAndNeverARecording() = runTest {
+        // Two seconds of audio in the button's collection: long enough that the Notebook would have kept it, so the
+        // empty list below proves the collection never entered the audio path at all rather than being a tap the
+        // sink dropped for its length.
+        ringHolds(0 to ringButton(0, final = true, count = 1, millis = 2_000), 1 to ringPart(1, true))
+        ring.count = 2
+
+        assertEquals(RingSessionEnd.SYNCED, session().run(idle))
+
+        assertEquals(listOf(1), sink.firstIndexes, "only the recording after the tap is a note")
+        assertEquals(listOf(RingButtonAction.PLAY_PAUSE), keys, "and the tap reaches the media key it is mapped to")
+        assertEquals(2, store.next, "the tap's collection is still read and passed, so it is not read again")
+    }
+
+    @Test
+    fun aDoubleTapIsOneGestureReadFromTheLastPartOfItsGroup() = runTest {
+        // The shape measured on the phone: two parts sharing a start index, the count climbing 1 then 2, the second
+        // one final.
+        ringHolds(0 to ringButton(0, final = false, count = 1), 1 to ringButton(0, final = true, count = 2))
+        ring.count = 2
+
+        assertEquals(RingSessionEnd.SYNCED, session().run(idle))
+
+        assertEquals(listOf(RingButtonAction.NEXT), keys, "two taps, sent once")
+        assertEquals(emptyList(), sink.firstIndexes)
+        assertEquals(2, store.next)
+    }
+
+    @Test
+    fun aHoldsCollectionKeepsItsAudioBecauseTheHoldIsTheNote() = runTest {
+        ringHolds(0 to ringButton(0, final = true, count = 1, held = true, millis = 2_000))
+        ring.count = 1
+
+        assertEquals(RingSessionEnd.SYNCED, session().run(idle))
+
+        assertEquals(1, sink.stored.size, "a hold is still the note it always was")
+        assertEquals(emptyList(), keys, "and a hold is never remapped to a media key")
+    }
+
+    @Test
+    fun aGestureTheRingNeverClosedSendsNothingWhenTheSyncIsAlreadyOver() = runTest {
+        ringHolds(0 to ringButton(0, final = false, count = 2))
+        ring.count = 1
+
+        assertEquals(RingSessionEnd.SYNCED, session().run(idle))
+
+        assertEquals(emptyList(), keys, "a count the ring never settled is not a gesture")
+        assertEquals(emptyList(), sink.firstIndexes)
+    }
+
+    @Test
+    fun aGestureTheRingNeverClosedIsSettledWhileTheSyncWaitsForIt() = runTest {
+        ringHolds(0 to ringButton(0, final = false, count = 2))
+        ring.recording = true
+        var polls = 0
+        ring.beforeAdvertisementRead = {
+            polls++
+            if (polls >= 12) ring.recording = false
+        }
+
+        assertEquals(RingSessionEnd.SYNCED, session().run(idle.copy(recording = true)))
+
+        assertEquals(listOf(RingButtonAction.NEXT), keys, "the silence past the quiet gap settled the two taps")
+    }
+
+    @Test
+    fun aButtonCollectionAfterAnOpenGroupDropsThatGroupRatherThanContinuingIt() = runTest {
+        ringHolds(0 to ringPart(0, final = false), 1 to ringButton(1, final = true, count = 1), 2 to ringPart(3, true))
+
+        session().run(idle)
+
+        assertEquals(listOf(2), sink.firstIndexes, "the group the tap interrupted cannot be a recording")
+        assertEquals(3, store.next)
     }
 
     @Test

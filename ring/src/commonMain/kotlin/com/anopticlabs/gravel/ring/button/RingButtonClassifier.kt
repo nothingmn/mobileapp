@@ -3,33 +3,14 @@ package com.anopticlabs.gravel.ring.button
 import co.touchlab.kermit.Logger
 
 /**
- * A press measured at or under this is the button's tap.
- *
- * Why 700 ms. A press is measured as the time between the two advertisements that carried its edges, never as the
- * time the finger was down, so the measurement is an upper bound rounded up to the ring's advertising interval. Two
- * bounds fix the window:
- *
- * - It must stay under the Notebook's own tap floor, 1000 ms (`MIN_RECORDING_MILLIS`): a ring recording shorter than
- *   that is already dropped as a tap, so a press this feature treats as a tap can never have been a note the
- *   Notebook would have kept. 700 leaves 300 ms of margin for a slow advertisement.
- * - It must be longer than a real tap as measured through those advertisements — a tap of 150 ms plus one ~500 ms
- *   advertising interval is 650 ms — or every tap would read as a hold and the feature would do nothing.
- *
- * The failure this choice is biased towards is the safe one: a press that measures too long is a
- * [RingButtonGesture.HOLD], which is what the button does today, and a recording is never mistaken for a media key
- * in a way that loses audio, because only the sync the `recording` flag alone asked for is ever held back (see
- * [RingButtonController] and the runner that uses it).
- */
-const val RING_TAP_MILLIS = 700L
-
-/**
  * Short presses closer together than this belong to one sequence, so two taps are a double-click rather than two
  * clicks.
  *
- * Why 700 ms. The gap runs from the press that closed last to the press that comes next, so it too is rounded up to
- * an advertising interval: one interval of ~500 ms plus a quick second tap has to fit, and 700 ms does. It is also
- * more than twice Android's own double-tap window (300 ms, `ViewConfiguration.getDoubleTapTimeout`), so a
- * deliberate double-click is not split, while two taps a second apart stay two clicks. A sequence that closes
+ * Why 700 ms. The gap runs from the press that closed last to the press that comes next, and the presses of one
+ * gesture arrive from the ring as the parts of one collection group, tens of milliseconds apart (70–90 ms
+ * measured), so any two presses of one gesture are far inside this window while two deliberate taps a second apart
+ * are outside it. It is also more than twice Android's own double-tap window (300 ms,
+ * `ViewConfiguration.getDoubleTapTimeout`), so a deliberate double-click is not split. A sequence that closes
  * slowly costs the user only the delay before the key is sent.
  */
 const val RING_SEQUENCE_GAP_MILLIS = 700L
@@ -52,25 +33,19 @@ data class RingButtonEvent(
  * is [RingButtonGesture.HOLD], and short presses followed by a long one are [RingButtonGesture.CLICK_HOLD]. Short
  * presses belong to one sequence while they follow each other by less than [gapMillis].
  *
- * Two inputs, and no clock inside: presses come from a [RingButtonPress] source, and [onTick] is called for every
- * advertisement the scan hears, which is the only clock the button has — that is what closes a sequence of short
- * presses once its gap passes with no further press. Both entry points take the millisecond they happened at, so the
- * whole matrix is tested without waiting, and neither the class nor its tests carry an Android type.
+ * Two inputs, and no clock inside: presses come from a [RingButtonPress] source, and [onTick] is called by that
+ * source when it knows no further press of the sequence is coming — for the ring's own button record, the final
+ * collection of the gesture. Both entry points take the millisecond they happened at, so the whole matrix is tested
+ * without waiting, and neither the class nor its tests carry an Android type.
  *
- * What it cannot do: it knows only what its source saw. With [RingAdvertisementPresses] a press whose edges fall
- * between two advertisements is invisible, and a press whose edges are seen is measured rounded up to the
- * advertising interval. Every edge and every gesture is logged, so a button that seems dead on the phone can be told
- * apart from one that is never heard.
+ * What it cannot do: it knows only what its source saw. A source that reports fewer presses than the user made — a
+ * tap the ring never reported — makes a shorter gesture or none at all, never a different key. Every press and every
+ * gesture is logged, so a button that seems dead on the phone can be told apart from one that is never heard.
  */
 class RingButtonClassifier(private val gapMillis: Long = RING_SEQUENCE_GAP_MILLIS) {
     private var shortPresses = 0
     private var lastPressAt: Long? = null
     private var sequenceStartedAt = 0L
-    private var lastGesture: RingButtonEvent? = null
-
-    /** The last gesture this classifier emitted, or null once a sync result has consumed it. */
-    @Synchronized
-    fun lastGesture(): RingButtonEvent? = lastGesture
 
     /**
      * One press from the source. The gestures it completed, which is none while a sequence of short presses waits
@@ -106,8 +81,8 @@ class RingButtonClassifier(private val gapMillis: Long = RING_SEQUENCE_GAP_MILLI
     }
 
     /**
-     * The clock, one call per advertisement: closes a sequence of short presses once its gap has passed. Returns the
-     * click or double-click it closed, if any.
+     * The clock, called by the source once the sequence is over: closes a sequence of short presses at
+     * [atMillis], which the source puts past the gap. Returns the click or double-click it closed, if any.
      */
     @Synchronized
     fun onTick(atMillis: Long): List<RingButtonEvent> {
@@ -123,27 +98,11 @@ class RingButtonClassifier(private val gapMillis: Long = RING_SEQUENCE_GAP_MILLI
         )
     }
 
-    /**
-     * What a sync that produced [collections] recordings says about the last gesture: true when that gesture was a
-     * media gesture whose press also left audio on the ring. Nothing is lost when it does — the advertisement's
-     * count has changed, so the next sync imports it — but the log says so, because a tap that recorded is a ring
-     * behaving in a way this classifier did not expect.
-     */
-    @Synchronized
-    fun onSyncResult(collections: Int): Boolean {
-        val gesture = lastGesture ?: return false
-        lastGesture = null
-        if (collections <= 0 || gesture.gesture.records) return false
-        logger.w { "ring button: the press that produced ${gesture.gesture} also left $collections recording(s) on the ring" }
-        return true
-    }
-
-    /** Forgets the sequence and the last gesture, for a ring that was unpaired or a search that restarted. */
+    /** Forgets the sequence, for a ring that was unpaired or a search that restarted. */
     @Synchronized
     fun forget() {
         shortPresses = 0
         lastPressAt = null
-        lastGesture = null
     }
 
     private fun close(
@@ -155,7 +114,6 @@ class RingButtonClassifier(private val gapMillis: Long = RING_SEQUENCE_GAP_MILLI
         val event = RingButtonEvent(gesture, presses, pressMillis, sequenceStartedAt, atMillis)
         shortPresses = 0
         lastPressAt = null
-        lastGesture = event
         sequenceStartedAt = atMillis
         logger.i { "ring button: $gesture from $presses press(es), the last ${pressMillis ?: "unmeasured"} ms" }
         return event

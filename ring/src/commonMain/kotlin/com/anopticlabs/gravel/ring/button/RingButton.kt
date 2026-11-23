@@ -4,8 +4,8 @@ package com.anopticlabs.gravel.ring.button
  * What the ring's button produced, in the vocabulary upstream's `:experimental` gesture routing uses
  * (`RingGesture`): a single tap, two or three taps, a press held down, or a tap followed by a hold.
  *
- * [NONE] is the classifier's answer for an advertisement that closes no sequence — a press still open, or a
- * sequence still waiting for its gap. It is never emitted as an event and never reaches a media key; it exists so
+ * [NONE] is the classifier's answer for a source that closes no sequence — a press still open, or a sequence
+ * still waiting for its gap. It is never emitted as an event and never reaches a media key; it exists so
  * that "the button did nothing" is a value a mapping can be asked about, rather than an absence the caller has to
  * remember.
  */

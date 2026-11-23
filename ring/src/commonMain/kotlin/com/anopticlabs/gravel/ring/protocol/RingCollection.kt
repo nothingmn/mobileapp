@@ -5,6 +5,10 @@ private const val TAG_COMPRESSED = 0x51
 private const val TAG_PART = 0x52
 private const val TAG_CLOCK = 0x02
 private const val TAG_CLOCK_OFFSET = 0x35
+private const val TAG_BUTTON = 0x53
+
+/** The button's record is its two 32-bit words and nothing else; any other length is not this record. */
+private const val BUTTON_RECORD_BYTES = 8L
 
 /** The highest sample rate accepted from the ring; a plausibility bound, far above what it records at. */
 const val MAX_RING_SAMPLE_RATE = 192_000
@@ -21,11 +25,26 @@ class RingAudio internal constructor(val sampleRate: Int, val samples: IntArray)
  */
 class RingUnknownRecord(val tag: Int, val length: Long, val head: ByteArray)
 
+/**
+ * The ring's own report of its button, from record 0x53: two little-endian 32-bit words, [held] from the first and
+ * [count] from the second.
+ *
+ * [held] is the ring saying the button is down: a press it will record as a note. [count] is how many presses the
+ * gesture the ring is reporting has made so far — the ring counts them itself, so a double tap arrives as a report
+ * of 2 and the app never has to guess a cadence. As measured on the operator's phone, word 1 / word 2 were 0/1 for a
+ * single tap, 0/2 for a double, 0/3 for a triple and 1/1 for a hold.
+ *
+ * [count] is a count of presses, so a word that does not fit an Int is not a count; it saturates rather than
+ * wrapping, and the consumer refuses what is not a gesture (see `RingButtonController`).
+ */
+class RingButtonRecord(val held: Boolean, val count: Int)
+
 
 /**
  * One collection of a recording. Collections sharing [startIndex] are the parts of one recording, in the
  * order they were read; the [final] one closes it. [ringClock] and [clockOffset] date it, see [capturedAtUnixSeconds].
- * [unknownRecords] are the records the parser skipped, kept for the log alone.
+ * [button] is the ring's own report of its button when this collection carries one, and [unknownRecords] are the
+ * records the parser skipped, kept for the log alone.
  */
 class RingCollection internal constructor(
     val audio: RingAudio,
@@ -34,6 +53,7 @@ class RingCollection internal constructor(
     val ringClock: Long?,
     val clockOffset: Long?,
     val unknownRecords: List<RingUnknownRecord> = emptyList(),
+    val button: RingButtonRecord? = null,
 ) {
     /**
      * The Unix time the collection carries. Before the phone sets the ring's clock, the clock counts from zero
@@ -45,7 +65,8 @@ class RingCollection internal constructor(
 
 /**
  * Parses the answer to [RingRequest.ReadCollection]: a 24-bit length equal to the collection's size and a
- * zero byte, then records of a tag, a length (32-bit for audio, else 16-bit) and a payload. Records this
+ * zero byte, then records of a tag, a length (32-bit for audio, else 16-bit) and a payload. The ring's own button
+ * report, 0x53, becomes [RingCollection.button]; those eight bytes are its only accepted length. Records this
  * client does not use are skipped, and kept in [RingCollection.unknownRecords] so a sync can log them: the
  * parser never guesses what a record means. A collection needs one audio record and one part record. Throws
  * [RingProtocolException] when the bytes do not have this shape; parsing is deterministic, so the same bytes
@@ -59,6 +80,7 @@ fun parseRingCollection(data: ByteArray): RingCollection {
     var part: Pair<Long, Boolean>? = null
     var clock: Long? = null
     var offset: Long? = null
+    var button: RingButtonRecord? = null
     val seen = mutableSetOf<Int>()
     val unknown = mutableListOf<RingUnknownRecord>()
     var at = 4
@@ -71,7 +93,7 @@ fun parseRingCollection(data: ByteArray): RingCollection {
         val start = at + header
         if (length > data.size - start) throw RingProtocolException("record 0x${tag.toString(16)} runs past the end")
         val end = start + length.toInt()
-        val used = tag == TAG_PART || tag == TAG_CLOCK || tag == TAG_CLOCK_OFFSET || wide
+        val used = tag == TAG_PART || tag == TAG_CLOCK || tag == TAG_CLOCK_OFFSET || tag == TAG_BUTTON || wide
         if (used && !seen.add(if (wide) TAG_COMPRESSED else tag)) {
             throw RingProtocolException("a second record 0x${tag.toString(16)}")
         }
@@ -90,6 +112,16 @@ fun parseRingCollection(data: ByteArray): RingCollection {
                 requireLength(tag, length, 4)
                 offset = data.u32(start)
             }
+            // The button's report is exactly two words. A payload of another length is not this record, and
+            // guessing at one would turn a truncated report into a different gesture.
+            TAG_BUTTON -> {
+                if (length != BUTTON_RECORD_BYTES) throw RingProtocolException("record 0x53 of $length bytes")
+                val word = data.u32(start)
+                button = RingButtonRecord(
+                    held = word != 0L,
+                    count = data.u32(start + 4).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                )
+            }
             else -> unknown += RingUnknownRecord(tag, length, data.copyOfRange(start, minOf(end, start + UNKNOWN_RECORD_HEAD)))
         }
         at = end
@@ -102,6 +134,7 @@ fun parseRingCollection(data: ByteArray): RingCollection {
         clock,
         offset,
         unknown,
+        button,
     )
 }
 

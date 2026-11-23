@@ -5,6 +5,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -77,9 +78,9 @@ class RingCollectionTest {
         // encoding nobody documented can be recognised from a real tap session without the parser guessing at it.
         val parsed = parseRingCollection(observedOrder())
 
-        assertEquals(listOf(0x53, 0x25, 0x01, 0x54, 0x37), parsed.unknownRecords.map { it.tag })
-        assertEquals(listOf(8L, 4L, 6L, 4L, 2L), parsed.unknownRecords.map { it.length })
-        assertContentEquals(bytes(0x0b, 0x00, 0x03, 0x4b), parsed.unknownRecords[1].head)
+        assertEquals(listOf(0x25, 0x01, 0x54, 0x37), parsed.unknownRecords.map { it.tag })
+        assertEquals(listOf(4L, 6L, 4L, 2L), parsed.unknownRecords.map { it.length })
+        assertContentEquals(bytes(0x0b, 0x00, 0x03, 0x4b), parsed.unknownRecords[0].head)
         assertContentEquals(intArrayOf(0, 1, 1, 3, 2), parsed.audio.samples, "reporting them changed nothing")
         assertEquals(77, parsed.startIndex)
         assertTrue(parsed.final)
@@ -99,7 +100,56 @@ class RingCollectionTest {
     fun theRecordsTheParserUsesAreNotReportedAsUnknown() {
         val parsed = parseRingCollection(observedOrder())
 
-        assertEquals(emptySet(), parsed.unknownRecords.map { it.tag }.intersect(setOf(0x50, 0x51, 0x52, 0x02, 0x35)))
+        assertEquals(emptySet(), parsed.unknownRecords.map { it.tag }.intersect(setOf(0x50, 0x51, 0x52, 0x02, 0x35, 0x53)))
+    }
+
+    @Test
+    fun theButtonRecordReadsBothOfItsWords() {
+        // Measured on the operator's phone, one collection per press: 0/1 a single tap, 0/2 a double, 0/3 a triple,
+        // 1/1 a hold. The first word is the button being down, the second the ring's own count of the presses.
+        val taps = listOf(1 to false, 2 to false, 3 to false, 1 to true)
+        for ((count, held) in taps) {
+            val parsed = parseRingCollection(collection(partRecord(5_003, true), audio, record(0x53, u32(if (held) 1 else 0) + u32(count.toLong()))))
+            val button = assertNotNull(parsed.button, "a collection with 0x53 carries the button's report")
+
+            assertEquals(held, button.held, "word 1 of $count/$held")
+            assertEquals(count, button.count, "word 2 of $count/$held")
+            assertContentEquals(intArrayOf(0, 1, 1, 3, 2), parsed.audio.samples, "the audio is unchanged by the report")
+        }
+    }
+
+    @Test
+    fun aClickThenAHoldIsAReportOfTwoPressesWithTheButtonDown() {
+        // The second word counts the presses of the gesture the ring is reporting, the held one included.
+        val parsed = parseRingCollection(collection(partRecord(5_003, true), audio, record(0x53, u32(1) + u32(2))))
+
+        assertEquals(true, parsed.button?.held)
+        assertEquals(2, parsed.button?.count)
+    }
+
+    @Test
+    fun aCollectionWithoutAButtonRecordHasNone() {
+        assertNull(parseRingCollection(collection(partRecord(1, true), audio)).button)
+        assertNull(parseRingCollection(collection(partRecord(1, true), audio, record(0x25, bytes(11, 0, 3, 75)))).button)
+    }
+
+    @Test
+    fun aButtonRecordThatIsNotEightBytesIsRefused() {
+        // Two words and nothing else: a truncated report must not read as a shorter gesture, and a longer one is
+        // not this record at all.
+        for (size in listOf(0, 4, 7, 9, 12)) {
+            val payload = ByteArray(size).also { if (size >= 8) { it.putU32(0, 0); it.putU32(4, 1) } }
+            assertFailsWith<RingProtocolException>("a button record of $size bytes") {
+                parseRingCollection(collection(partRecord(1, true), audio, record(0x53, payload)))
+            }
+        }
+    }
+
+    @Test
+    fun aSecondButtonRecordInOneCollectionIsRefused() {
+        val report = record(0x53, u32(0) + u32(1))
+
+        assertFailsWith<RingProtocolException> { parseRingCollection(collection(partRecord(1, true), audio, report, report)) }
     }
 
     @Test

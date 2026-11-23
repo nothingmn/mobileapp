@@ -30,8 +30,8 @@ import coredevices.pebble.ui.TopBarParams
  *
  * The page is built from [RingButtonFacts] only — no ring client, no Bluetooth — so the same layout works wherever
  * the settings are drawn, and what it says is testable as plain values. The switch is off by default, the two
- * recording gestures are named but not offered, and the last line states the detection's limit rather than promising
- * a button that always answers: a tap the ring never advertised is a tap nothing saw.
+ * recording gestures are named but not offered, and the last line says where the gesture comes from — the ring's own
+ * report of its button, collected on a sync — rather than promising a button that answers instantly.
  *
  * Every word comes from this feature's own Compose resources (see [RingButtonKeys]), in the phone's language.
  */
@@ -74,7 +74,7 @@ fun RingButtonScreen(
         Text(RingButtonCopy(RingButtonKeys.SECTION_RECORDING).text(), style = MaterialTheme.typography.titleMedium)
         Text(RingButtonCopy(RingButtonKeys.RECORDING_NOTE).text(), style = MaterialTheme.typography.bodySmall)
 
-        Text(RingButtonCopy(RingButtonKeys.LOSSY_NOTE).text(), style = MaterialTheme.typography.bodySmall)
+        Text(RingButtonCopy(RingButtonKeys.SOURCE_NOTE).text(), style = MaterialTheme.typography.bodySmall)
     }
 }
 

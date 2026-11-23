@@ -1,17 +1,18 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package com.anopticlabs.gravel.app
 
-import com.anopticlabs.gravel.ring.button.RING_SEQUENCE_GAP_MILLIS
-import com.anopticlabs.gravel.ring.button.RING_TAP_MILLIS
+import com.anopticlabs.gravel.ring.button.RING_BURST_QUIET_MILLIS
 import com.anopticlabs.gravel.ring.button.RingButtonAction
 import com.anopticlabs.gravel.ring.button.RingButtonController
 import com.anopticlabs.gravel.ring.button.RingButtonMapping
 import com.anopticlabs.gravel.ring.button.RingMediaKeys
 import com.anopticlabs.gravel.ring.protocol.RingAdvertisement
+import com.anopticlabs.gravel.ring.protocol.RingButtonRecord
 import com.anopticlabs.gravel.ring.sync.RingSessionEnd
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,8 +23,11 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
 /**
- * Where the button and the sync meet: an advertisement whose only reason to sync is the button being down either
- * starts a session (the button is the ring's, as today) or does not (the switch has taken the tap over).
+ * Where the button and the sync meet, now that the advertisement carries no gesture.
+ *
+ * A press is only visible once connected — it is a record inside a collection — so the runner's job is to let a press
+ * start a session even inside the hold the previous one left, and the session reads the gesture. The runner itself
+ * sends no key: what it keeps of the button is the pairing change's forget.
  */
 class RingButtonRunnerTest {
     private val address = "A1:B2:C3:D4:E5:F6"
@@ -35,7 +39,10 @@ class RingButtonRunnerTest {
 
     private val keys = RingMediaKeys { sent += it }
 
-    private fun TestScope.runner(mapping: RingButtonMapping) = RingSyncRunner(
+    private fun TestScope.runner(
+        mapping: RingButtonMapping,
+        buttons: RingButtonController = RingButtonController({ mapping }, keys),
+    ) = RingSyncRunner(
         paired = paired,
         hear = { heard.receiveAsFlow() },
         sync = { _, advertisement ->
@@ -48,10 +55,10 @@ class RingButtonRunnerTest {
         lastWait = { null },
         imported = { imported },
         startOver = {},
-        buttons = RingButtonController({ mapping }, keys),
+        buttons = buttons,
         clock = { testScheduler.currentTime },
         marks = testScheduler.timeSource,
-        // Every advertisement below is meant to be acted on: the hold between sessions is not what is under test.
+        // The hold is put back by every sync; the press tests below are about the press crossing it.
         syncHold = Duration.ZERO,
     ).also { it.start(backgroundScope) }
 
@@ -71,90 +78,76 @@ class RingButtonRunnerTest {
         runCurrent()
     }
 
-    private fun TestScope.tap() {
-        hear(4, recording = true)
-        advanceTimeBy(300.milliseconds)
-        hear(4)
-        advanceTimeBy(RING_SEQUENCE_GAP_MILLIS.milliseconds + 100.milliseconds)
-        hear(4)
-    }
-
     @Test
-    fun aTapTheSwitchHasTakenOverStartsNoSyncAndSendsPlayPause() = runTest {
+    fun aPressStartsASyncAndTheRunnerSendsNothingItself() = runTest {
         runner(RingButtonMapping(enabled = true))
         firstHearing()
         val before = synced.size
 
-        tap()
+        hear(4, recording = true)
 
-        assertEquals(before, synced.size, "the tap started no session, so no empty recording was read")
-        assertEquals(listOf(RingButtonAction.PLAY_PAUSE), sent)
+        assertEquals(before + 1, synced.size, "the press is read by connecting, so it starts a session")
+        assertEquals(emptyList(), sent, "the key comes from the session's collections, not from the advertisement")
     }
 
     @Test
-    fun aTapWithTheSwitchOffSyncsAsTodayAndSendsNoKey() = runTest {
+    fun aPressStartsASyncInsideTheHoldTheLastOneLeft() = runTest {
+        // A press is not advertisement news that repeats: it is the one chance to read the button, so the 30 s that
+        // keep the app from reconnecting after a sync do not apply to it. The session a sync starts puts the hold
+        // back, so a burst of taps cannot open a session each.
+        val held = RingSyncRunner(
+            paired = paired,
+            hear = { heard.receiveAsFlow() },
+            sync = { _, advertisement ->
+                synced += advertisement.collectionCount
+                RingSessionEnd.SYNCED
+            },
+            lastCount = { synced.lastOrNull() },
+            positionReadable = { true },
+            waitReason = { null },
+            lastWait = { null },
+            imported = { imported },
+            startOver = {},
+            buttons = RingButtonController({ RingButtonMapping(enabled = true) }, keys),
+            clock = { testScheduler.currentTime },
+            marks = testScheduler.timeSource,
+            syncHold = 30.seconds,
+        ).also { it.start(backgroundScope) }
+
+        hear(4)
+        runCurrent()
+        val before = synced.size
+
+        hear(4, recording = true)
+
+        assertEquals(before + 1, synced.size, "inside the hold, but a press is not held back")
+        held.stop()
+    }
+
+    @Test
+    fun withTheSwitchOffAPressIsStillReadAndSendsNoKey() = runTest {
         runner(RingButtonMapping(enabled = false))
         firstHearing()
         val before = synced.size
 
-        tap()
+        hear(4, recording = true)
 
-        assertEquals(before + 1, synced.size, "today's empty recording: the recording flag alone starts a sync")
+        assertEquals(before + 1, synced.size, "the ring's button is read the same way with the switch off")
         assertEquals(emptyList(), sent, "and the button stays the ring's")
     }
 
     @Test
-    fun aHoldIsStillSyncedAndSendsNoKey() = runTest {
-        runner(RingButtonMapping(enabled = true))
-        firstHearing()
-        val before = synced.size
+    fun aPairingChangeForgetsAHalfReadGesture() = runTest {
+        val controller = RingButtonController({ RingButtonMapping(enabled = true) }, keys)
+        runner(RingButtonMapping(enabled = true), controller)
+        controller.collection(RingButtonRecord(held = false, count = 2), 5_003, final = false, atMillis = 1_000)
 
-        hear(4, recording = true)
-        advanceTimeBy(1.seconds)
-        hear(4, recording = true)
+        paired.value = null
+        runCurrent()
+        paired.value = address
+        runCurrent()
+        controller.quiet(1_000 + RING_BURST_QUIET_MILLIS)
 
-        assertEquals(before + 1, synced.size, "a press this long is a recording, and is read as it always was")
-        assertEquals(emptyList(), sent)
-    }
-
-    @Test
-    fun aTapWhoseAdvertisementAlsoCarriesANewCountIsStillSynced() = runTest {
-        runner(RingButtonMapping(enabled = true))
-        firstHearing()
-        val before = synced.size
-
-        hear(4, recording = true)
-        advanceTimeBy(1.seconds)
-        hear(5)
-
-        assertEquals(before + 1, synced.size, "the count changed, so something was recorded and is not stranded")
-    }
-
-    @Test
-    fun anAdvertisementWhoseFlagDidNotChangeNeitherPressesNorSyncs() = runTest {
-        runner(RingButtonMapping(enabled = true))
-        firstHearing()
-        val before = synced.size
-
-        repeat(3) {
-            advanceTimeBy(1.seconds)
-            hear(4)
-        }
-
-        assertEquals(before, synced.size)
-        assertEquals(emptyList(), sent)
-    }
-
-    @Test
-    fun aPressStillShorterThanTheTapWindowSuppressesTheSync() = runTest {
-        runner(RingButtonMapping(enabled = true))
-        firstHearing()
-        val before = synced.size
-
-        hear(4, recording = true)
-        advanceTimeBy(RING_TAP_MILLIS)
-        hear(4, recording = true)
-
-        assertEquals(before, synced.size, "still inside the tap window at the second advertisement")
+        assertEquals(emptyList(), sent, "the gesture the old pairing reported is gone")
     }
 }

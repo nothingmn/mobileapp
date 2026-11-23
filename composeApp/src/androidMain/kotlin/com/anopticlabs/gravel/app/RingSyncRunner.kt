@@ -61,9 +61,10 @@ const val MAX_RING_TRIES = 5
  * session that fails or that the sink stops holds syncing off for a while, one that ran out of time after importing
  * something does not, and a damaged saved position stops syncing until [importAgain].
  *
- * [buttons] sees every advertisement the search hears, so the ring's button is followed even while the Notebook is
- * off or the position is lost, and an advertisement whose only reason to sync is that the button is down starts no
- * session while that press is a tap the switch has taken over — see [RingButtonController].
+ * [buttons] is the ring's button, kept only to forget a gesture the ring stopped reporting when the pairing
+ * changes; the presses themselves are read out of the collections a sync imports (see [RingSession]), so a press
+ * starts a sync even inside the hold the last one left, and the button is followed whether or not the Notebook would
+ * take a recording.
  */
 class RingSyncRunner(
     private val paired: StateFlow<String?>,
@@ -155,20 +156,15 @@ class RingSyncRunner(
         val latest = Channel<RingAdvertisement>(Channel.CONFLATED)
         launch { search(address, latest) }
         for (advertisement in latest) {
-            if (_positionLost.value || !attempts.ready() || !advertisement.pairable) continue
-            // The tap, and nothing else: an advertisement whose only reason to sync is the button being down, while
-            // the press is short enough to be the media gesture the switch has taken over. Any other reason to sync
-            // — a changed count, a clock request — is left alone, so a recording the ring made is never stranded.
-            if (advertisement.recording && !shouldSyncRing(advertisement.copy(recording = false), count) &&
-                buttons.holdsCapture(clock())
-            ) {
-                logger.d { "the button is down: no sync for this advertisement" }
-                continue
-            }
+            // A press is only visible once connected — it is inside the collections, not the advertisement — so a
+            // press may start a sync inside the hold a previous one left, and past a Notebook that would refuse a
+            // recording. Nothing is stored for it: the collection is the button, and the session drops it.
+            val pressed = advertisement.recording
+            if (_positionLost.value || !(pressed || attempts.ready()) || !advertisement.pairable) continue
             val wanted = shouldSyncRing(advertisement, count)
             if (!wanted && !attempts.syncDue()) continue
             val wait = checked("checking the Notebook") { waitReason() }
-            if (wait.isFailure || wait.getOrNull() != null) {
+            if (!pressed && (wait.isFailure || wait.getOrNull() != null)) {
                 wait.getOrNull()?.takeIf { wanted }?.let { _state.value = RingSyncState.Waiting(it) }
                 attempts.waited()
                 continue
@@ -194,7 +190,6 @@ class RingSyncRunner(
                     heard = true
                     _searchFailed.value = false
                     _lastHeard.value = clock()
-                    buttons.advertisement(clock(), it.recording)
                     latest.send(it)
                 }
             } catch (e: CancellationException) {
@@ -245,7 +240,6 @@ class RingSyncRunner(
             }
             if (outcome != null) {
                 _state.value = outcome
-                buttons.syncFinished(imported() - before)
                 return
             }
             delay(RETRY_DELAY)

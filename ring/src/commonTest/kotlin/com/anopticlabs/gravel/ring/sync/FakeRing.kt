@@ -107,6 +107,29 @@ fun ringPart(startIndex: Int, final: Boolean, seconds: Int = 1, clock: Long = 1_
     )
 }
 
+/**
+ * A collection reporting the ring's button: [count] presses, the button [held] when the ring said it was down, with
+ * [millis] of silent audio at [rate]. A tap's collection carried about a millisecond of audio on the operator's
+ * phone; the length is a parameter so a test can prove the collection is not read as a note at any length.
+ */
+fun ringButton(
+    startIndex: Int,
+    final: Boolean,
+    count: Int,
+    held: Boolean = false,
+    millis: Long = 1,
+    rate: Long = 10_000,
+): ByteArray {
+    val (bits, stream) = bitString("1".repeat(maxOf((rate * millis / 1_000).toInt(), 1)))
+    return collection(
+        record(0x35, u32(0xFFFF_FFFF)),
+        partRecord(startIndex.toLong(), final),
+        record(0x53, u32(if (held) 1 else 0) + u32(count.toLong())),
+        compressedRecord(0x84, bits, rate, stream),
+        record(0x02, u32(1_800_000_000)),
+    )
+}
+
 class MemoryStore(var next: Int? = null, var count: Int? = null) : RingSyncStore {
     override suspend fun nextIndex() = next
 

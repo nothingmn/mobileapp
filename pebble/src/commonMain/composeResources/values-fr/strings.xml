@@ -50,5 +50,5 @@
     <string name="ring_button_action_nothing">Rien</string>
     <string name="ring_button_section_recording">Enregistrement</string>
     <string name="ring_button_recording_note">Maintenez le bouton pour enregistrer une note, ou touchez-le puis maintenez pour commencer l'enregistrement. Les deux restent des enregistrements et ne changent pas ici.</string>
-    <string name="ring_button_lossy_note">La bague ne signale son bouton que dans les annonces qu'elle diffuse, donc un toucher qui tombe entre deux annonces n'est pas vu du tout.</string>
+    <string name="ring_button_source_note">Le geste est lu dans le rapport que la bague fait elle-même de son bouton, que l'application récupère lorsqu'elle se synchronise avec la bague : un toucher est donc vu sans que rien ne soit enregistré.</string>
 </resources>

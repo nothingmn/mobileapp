@@ -12,10 +12,10 @@ import coreapp.pebble.generated.resources.ring_button_enable_subtitle
 import coreapp.pebble.generated.resources.ring_button_enable_title
 import coreapp.pebble.generated.resources.ring_button_item_description
 import coreapp.pebble.generated.resources.ring_button_item_title
-import coreapp.pebble.generated.resources.ring_button_lossy_note
 import coreapp.pebble.generated.resources.ring_button_recording_note
 import coreapp.pebble.generated.resources.ring_button_section_media
 import coreapp.pebble.generated.resources.ring_button_section_recording
+import coreapp.pebble.generated.resources.ring_button_source_note
 import coreapp.pebble.generated.resources.ring_button_title
 import coreapp.pebble.generated.resources.ring_button_triple
 import org.jetbrains.compose.resources.StringResource
@@ -42,7 +42,7 @@ object RingButtonKeys {
     const val ACTION_NOTHING = "ring_button_action_nothing"
     const val SECTION_RECORDING = "ring_button_section_recording"
     const val RECORDING_NOTE = "ring_button_recording_note"
-    const val LOSSY_NOTE = "ring_button_lossy_note"
+    const val SOURCE_NOTE = "ring_button_source_note"
 
     /** Every key this page ships, so the resource files and the lookup table can be held to it. */
     val all: Set<String> = setOf(
@@ -61,7 +61,7 @@ object RingButtonKeys {
         ACTION_NOTHING,
         SECTION_RECORDING,
         RECORDING_NOTE,
-        LOSSY_NOTE,
+        SOURCE_NOTE,
     )
 }
 
@@ -82,7 +82,7 @@ fun ringButtonResourceFor(key: String): StringResource? = when (key) {
     RingButtonKeys.ACTION_NOTHING -> Res.string.ring_button_action_nothing
     RingButtonKeys.SECTION_RECORDING -> Res.string.ring_button_section_recording
     RingButtonKeys.RECORDING_NOTE -> Res.string.ring_button_recording_note
-    RingButtonKeys.LOSSY_NOTE -> Res.string.ring_button_lossy_note
+    RingButtonKeys.SOURCE_NOTE -> Res.string.ring_button_source_note
     else -> null
 }
 
