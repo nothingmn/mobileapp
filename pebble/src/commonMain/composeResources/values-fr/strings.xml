@@ -30,4 +30,25 @@
     <string name="voice_pinned_voice_gone_this_language">La voix que vous avez choisie n'est plus offerte par ce moteur, donc la meilleure voix pour cette langue est utilisée à la place.</string>
     <string name="voice_tts_item_title">Synthèse vocale</string>
     <string name="voice_tts_item_description">Le moteur et la voix qui lisent les réponses de l'assistant, et la synthèse hors ligne</string>
+
+    <!--
+      Gravel : Settings > General > Ring button. Même registre canadien que le bloc voice_ : « toucher » pour tap,
+      « piste » pour track. « Bague » est le mot de l'application pour l'anneau Index 01.
+    -->
+    <string name="ring_button_title">Bouton de la bague</string>
+    <string name="ring_button_item_title">Bouton de la bague</string>
+    <string name="ring_button_item_description">Lire, mettre en pause et changer de piste sur ce téléphone avec le bouton de la bague</string>
+    <string name="ring_button_section_media">Gestes du bouton</string>
+    <string name="ring_button_enable_title">Contrôler la lecture du téléphone</string>
+    <string name="ring_button_enable_subtitle">Touchez la bague pour lire, mettre en pause ou changer de piste sur ce téléphone</string>
+    <string name="ring_button_click">Un toucher</string>
+    <string name="ring_button_double">Deux touchers</string>
+    <string name="ring_button_triple">Trois touchers</string>
+    <string name="ring_button_action_play_pause">Lecture/pause</string>
+    <string name="ring_button_action_next">Piste suivante</string>
+    <string name="ring_button_action_previous">Piste précédente</string>
+    <string name="ring_button_action_nothing">Rien</string>
+    <string name="ring_button_section_recording">Enregistrement</string>
+    <string name="ring_button_recording_note">Maintenez le bouton pour enregistrer une note, ou touchez-le puis maintenez pour commencer l'enregistrement. Les deux restent des enregistrements et ne changent pas ici.</string>
+    <string name="ring_button_lossy_note">La bague ne signale son bouton que dans les annonces qu'elle diffuse, donc un toucher qui tombe entre deux annonces n'est pas vu du tout.</string>
 </resources>

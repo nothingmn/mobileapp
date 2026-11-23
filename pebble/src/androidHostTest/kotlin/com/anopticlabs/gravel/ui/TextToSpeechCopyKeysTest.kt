@@ -32,29 +32,41 @@ class TextToSpeechCopyKeysTest {
     private val english = strings("src/commonMain/composeResources/values/strings.xml")
     private val french = strings("src/commonMain/composeResources/values-fr/strings.xml")
 
+    /**
+     * The prefixes `values-fr` translates: one block per feature that has been localised. The voice loop's came first;
+     * the ring button's is the second, and its own test holds it to the same rules.
+     */
+    private val translatedPrefixes = listOf("voice_", "ring_button_")
+
+    private fun Map<String, String>.translated(): Map<String, String> =
+        filterKeys { key -> translatedPrefixes.any { key.startsWith(it) } }
+
     @Test
     fun bothLocalesHoldTheSameVoiceKeys() {
         assertEquals(
-            english.keys.filter { it.startsWith("voice_") }.toSet(),
-            french.keys,
+            english.translated().keys.filter { it.startsWith("voice_") }.toSet(),
+            french.keys.filter { it.startsWith("voice_") }.toSet(),
             "a key missing from values-fr/strings.xml would fall back to English silently",
         )
     }
 
     @Test
     fun onlyTheFeaturesOwnKeysAreTranslated() {
-        // The rest of the app stays English on purpose; a translated key outside voice_* would be scope creep that
-        // silently half-translates the UI.
-        assertTrue(french.keys.all { it.startsWith("voice_") }, "values-fr holds this feature's copy only")
-        assertTrue(english.keys.any { !it.startsWith("voice_") }, "the app's own English strings are still in values")
+        // The rest of the app stays English on purpose; a translated key outside these blocks would be scope creep
+        // that silently half-translates the UI.
+        assertTrue(
+            french.keys.all { key -> translatedPrefixes.any { key.startsWith(it) } },
+            "values-fr holds the translated features' copy only",
+        )
+        assertTrue(english.keys.any { key -> translatedPrefixes.none { key.startsWith(it) } }, "the app's own English strings are still in values")
     }
 
     @Test
     fun theCodeAndTheResourcesNameTheSameKeys() {
         assertEquals(
-            TextToSpeechKeys.all,
+            TextToSpeechKeys.all + RingButtonKeys.all,
             french.keys,
-            "every key the screen can ask for is in both files, and no resource is unreachable",
+            "every key the screens can ask for is in both files, and no resource is unreachable",
         )
     }
 
@@ -67,7 +79,7 @@ class TextToSpeechCopyKeysTest {
 
     @Test
     fun aTranslationKeepsTheSameArgumentsInTheSameNumber() {
-        for ((key, englishValue) in english.filterKeys { it.startsWith("voice_") }) {
+        for ((key, englishValue) in english.translated().filterKeys { it.startsWith("voice_") }) {
             val frenchValue = french.getValue(key)
             assertEquals(
                 placeholders(englishValue),

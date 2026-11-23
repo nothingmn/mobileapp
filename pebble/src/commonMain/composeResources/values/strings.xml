@@ -37,4 +37,26 @@
     <string name="voice_pinned_voice_gone_this_language">The voice you chose is not offered by this engine any more, so the best voice for this language is used instead.</string>
     <string name="voice_tts_item_title">Text to Speech</string>
     <string name="voice_tts_item_description">The engine and voice that speak the assistant's replies, and offline speech</string>
+
+    <!--
+      Gravel: Settings > General > Ring button, and the General section's item for it. Keys are prefixed ring_button_
+      so the feature's copy reads as one block beside the voice loop's. values-fr/strings.xml holds the same keys in
+      French and a test (RingButtonCopyKeysTest) fails the build if the two disagree.
+    -->
+    <string name="ring_button_title">Ring button</string>
+    <string name="ring_button_item_title">Ring button</string>
+    <string name="ring_button_item_description">Play, pause and skip on this phone with the ring's button</string>
+    <string name="ring_button_section_media">Button gestures</string>
+    <string name="ring_button_enable_title">Control phone media</string>
+    <string name="ring_button_enable_subtitle">Tap the ring to play, pause or skip on this phone</string>
+    <string name="ring_button_click">One tap</string>
+    <string name="ring_button_double">Two taps</string>
+    <string name="ring_button_triple">Three taps</string>
+    <string name="ring_button_action_play_pause">Play/pause</string>
+    <string name="ring_button_action_next">Next</string>
+    <string name="ring_button_action_previous">Previous</string>
+    <string name="ring_button_action_nothing">Nothing</string>
+    <string name="ring_button_section_recording">Recording</string>
+    <string name="ring_button_recording_note">Hold the button to record a note, or touch it and then hold to start recording. Both stay as recording and are not changed here.</string>
+    <string name="ring_button_lossy_note">The ring reports its button only in the advertisements it sends, so a tap that falls between two of them is not seen at all.</string>
 </resources>

@@ -166,12 +166,22 @@ class RingSession(
     /** The collection at [index], or null when the parser refuses its bytes. */
     private suspend fun readCollection(index: Int): RingCollection? {
         val bytes = exchange(RingRequest.ReadCollection(index))
-        return try {
+        val collection = try {
             parseRingCollection(bytes)
         } catch (e: RingProtocolException) {
             log.w(e) { "skipped collection $index" }
-            null
+            return null
         }
+        // What the ring sends that this client does not read: the only way to learn an encoding nobody documented,
+        // and the only reason the parser keeps the records it skips.
+        for (record in collection.unknownRecords) {
+            log.d {
+                "collection $index (start ${collection.startIndex}${if (collection.final) ", final" else ""}): " +
+                    "unknown record 0x${record.tag.toString(16)} of ${record.length} bytes, first " +
+                    record.head.joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
+            }
+        }
+        return collection
     }
 
     private suspend fun exchange(request: RingRequest): ByteArray {

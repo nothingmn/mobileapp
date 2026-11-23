@@ -72,6 +72,37 @@ class RingCollectionTest {
     }
 
     @Test
+    fun everyRecordTheParserDoesNotUseIsReportedWithItsTagLengthAndFirstBytes() {
+        // The log's only input: a sync says "the ring sent 0x25 of 4 bytes, first 0b 00 03 4b" and nothing else, so an
+        // encoding nobody documented can be recognised from a real tap session without the parser guessing at it.
+        val parsed = parseRingCollection(observedOrder())
+
+        assertEquals(listOf(0x53, 0x25, 0x01, 0x54, 0x37), parsed.unknownRecords.map { it.tag })
+        assertEquals(listOf(8L, 4L, 6L, 4L, 2L), parsed.unknownRecords.map { it.length })
+        assertContentEquals(bytes(0x0b, 0x00, 0x03, 0x4b), parsed.unknownRecords[1].head)
+        assertContentEquals(intArrayOf(0, 1, 1, 3, 2), parsed.audio.samples, "reporting them changed nothing")
+        assertEquals(77, parsed.startIndex)
+        assertTrue(parsed.final)
+    }
+
+    @Test
+    fun anUnknownRecordsHeadIsCappedAtEightBytesAndNeverRunsPastIt() {
+        val short = parseRingCollection(collection(partRecord(1, true), audio, record(0x99, bytes(1, 2))))
+        val long = parseRingCollection(collection(partRecord(1, true), audio, record(0x99, ByteArray(64) { it.toByte() })))
+
+        assertContentEquals(bytes(1, 2), short.unknownRecords.single().head)
+        assertEquals(64, long.unknownRecords.single().length)
+        assertContentEquals(ByteArray(8) { it.toByte() }, long.unknownRecords.single().head)
+    }
+
+    @Test
+    fun theRecordsTheParserUsesAreNotReportedAsUnknown() {
+        val parsed = parseRingCollection(observedOrder())
+
+        assertEquals(emptySet(), parsed.unknownRecords.map { it.tag }.intersect(setOf(0x50, 0x51, 0x52, 0x02, 0x35)))
+    }
+
+    @Test
     fun aCollectionWhoseHeaderDoesNotMatchItsSizeIsRefused() {
         val good = observedOrder()
 

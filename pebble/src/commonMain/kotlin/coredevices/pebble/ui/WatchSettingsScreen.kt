@@ -115,10 +115,14 @@ import com.anopticlabs.gravel.firmware.FirmwarePickerRoute
 import com.anopticlabs.gravel.ui.NotebookSettingsChoices
 import com.anopticlabs.gravel.ui.NotebookSettingsText
 import com.anopticlabs.gravel.ui.PhoneCalendarFirstStep
+import com.anopticlabs.gravel.ui.RingButtonCopy
+import com.anopticlabs.gravel.ui.RingButtonKeys
 import com.anopticlabs.gravel.ui.fontGrowth
 import com.anopticlabs.gravel.ui.phoneCalendarFirstStep
 import com.anopticlabs.gravel.ui.phoneCalendarRefusalText
 import com.anopticlabs.gravel.ui.rememberNotebookTab
+import com.anopticlabs.gravel.ui.rememberRingButtonSettings
+import com.anopticlabs.gravel.ui.ringButtonItemShown
 import com.anopticlabs.gravel.ui.rememberTextModels
 import com.anopticlabs.gravel.ui.TextToSpeechKeys
 import com.anopticlabs.gravel.ui.rememberTextToSpeechSettings
@@ -636,6 +640,9 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
     val voiceMqtt = rememberVoiceMqttSettings()
     // Gravel: the same for the text-to-speech engine, which is bound by the same module.
     val ttsSettings = rememberTextToSpeechSettings()
+    // Gravel: the ring's button, offered only while a ring is paired, and absent in a build with no ring client.
+    val ringButton = rememberRingButtonSettings()
+    val ringButtonPaired = ringButton?.paired?.collectAsState()?.value == true
     val notebookShown = notebookTab?.shown?.collectAsState()?.value == true
     val deepLinks = koinInject<PebbleDeepLinkHandler>()
     val notebookGuideDone = notebookTab?.takeIf { it.supported }?.setupGuide?.collectAsState()?.value?.done == true
@@ -710,6 +717,9 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
     // language change cannot leave the old words in a cached list.
     val ttsItemTitle = stringResourceFor(TextToSpeechKeys.TTS_ITEM_TITLE)
     val ttsItemDescription = stringResourceFor(TextToSpeechKeys.TTS_ITEM_DESCRIPTION)
+    // Gravel: the ring button item's words, resolved here for the same reason.
+    val ringButtonItemTitle = RingButtonCopy(RingButtonKeys.ITEM_TITLE).text()
+    val ringButtonItemDescription = RingButtonCopy(RingButtonKeys.ITEM_DESCRIPTION).text()
 
     val rawSettingsItems = remember(
             libPebbleConfig,
@@ -735,6 +745,9 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
             anyWatchSupportsFiveMinHrm,
             ttsItemTitle,
             ttsItemDescription,
+            ringButtonPaired,
+            ringButtonItemTitle,
+            ringButtonItemDescription,
         ) {
             listOfNotNull(
                 basicSettingsActionItem(
@@ -2474,6 +2487,17 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                         navBarNav.navigateTo(CommonRoutes.WatchOnboardingRoute)
                     },
                     show = { debugOptionsEnabled },
+                ) },
+                // Gravel: the paired ring's button. Offered only while a ring is paired, because with none there is
+                // no button to configure; the page itself draws nothing then, for a restored back stack.
+                navBarNav?.let { nav -> basicSettingsActionItem(
+                    title = ringButtonItemTitle,
+                    description = ringButtonItemDescription,
+                    topLevelType = TopLevelType.Phone,
+                    section = Section.General,
+                    keywords = "ring index button media play pause next previous track",
+                    action = { nav.navigateTo(PebbleNavBarRoutes.RingButtonRoute) },
+                    show = { ringButtonItemShown(ringButtonPaired) },
                 ) },
                 navBarNav?.let {basicSettingsActionItem(
                     title = "Show Ring Onboarding",

@@ -7,6 +7,8 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
@@ -15,8 +17,11 @@ import com.anopticlabs.gravel.firmware.FirmwarePickerRoute
 import com.anopticlabs.gravel.firmware.FirmwarePickerScreen
 import com.anopticlabs.gravel.ui.TextModelsScreen
 import com.anopticlabs.gravel.ui.rememberNotebookTab
+import com.anopticlabs.gravel.ui.rememberRingButtonSettings
 import com.anopticlabs.gravel.ui.rememberTextToSpeechSettings
 import com.anopticlabs.gravel.ui.rememberVoiceMqttSettings
+import com.anopticlabs.gravel.ui.RingButtonScreen
+import com.anopticlabs.gravel.ui.ringButtonItemShown
 import io.rebble.libpebblecommon.locker.AppType
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
@@ -145,6 +150,11 @@ object PebbleNavBarRoutes {
     @Serializable
     data object TextToSpeechRoute : NavBarRoute
 
+    // Gravel: Settings > General > Ring button. Reached only from the Settings entry that exists while a ring is
+    // paired; with none paired the entry is absent and the route draws nothing.
+    @Serializable
+    data object RingButtonRoute : NavBarRoute
+
     @Serializable
     data class WatchSettingsCategoryRoute(val section: String, val topLevelType: String) : NavBarRoute
 }
@@ -247,6 +257,23 @@ fun NavGraphBuilder.addNavBarRoutes(
     composableWithAnimations<PebbleNavBarRoutes.TextToSpeechRoute>(viewModel) {
         // The same: nothing binds the engine with the flag off, so nothing is drawn.
         rememberTextToSpeechSettings()?.Screen(topBarParams)
+    }
+    composableWithAnimations<PebbleNavBarRoutes.RingButtonRoute>(viewModel) {
+        // Gravel: the paired ring's button. Nothing binds the settings without a ring client, and the page draws
+        // nothing while no ring is paired, which is the same rule the Settings entry follows.
+        val ringButton = rememberRingButtonSettings()
+        if (ringButton != null) {
+            val paired by ringButton.paired.collectAsState()
+            val facts by ringButton.facts.collectAsState()
+            if (ringButtonItemShown(paired)) {
+                RingButtonScreen(
+                    topBarParams = topBarParams,
+                    facts = facts,
+                    onEnabled = ringButton::setEnabled,
+                    onAction = ringButton::setAction,
+                )
+            }
+        }
     }
     composableWithAnimations<PebbleNavBarRoutes.BatterySettingsRoute>(viewModel) {
         BatterySettingsScreen(nav, topBarParams)

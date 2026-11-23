@@ -17,11 +17,14 @@ import com.anopticlabs.gravel.notebook.storage.DeviceStateFile
 import com.anopticlabs.gravel.notebook.storage.QueueStore
 import com.anopticlabs.gravel.ring.link.RING_ADVERTISED_SERVICE
 import com.anopticlabs.gravel.ring.link.withRingConnection
+import com.anopticlabs.gravel.ring.button.RingButtonController
+import com.anopticlabs.gravel.ring.button.RingMediaKeys
 import com.anopticlabs.gravel.ring.protocol.RING_COMPANY_ID
 import com.anopticlabs.gravel.ring.protocol.RingAdvertisement
 import com.anopticlabs.gravel.ring.protocol.parseRingAdvertisement
 import com.anopticlabs.gravel.ring.sync.RingSession
 import com.anopticlabs.gravel.ui.NotebookTab
+import com.anopticlabs.gravel.ui.RingButtonSettings
 import com.anopticlabs.gravel.ui.RingSyncStatus
 import com.juul.kable.Scanner
 import coredevices.libindex.IndexDevices
@@ -527,6 +530,16 @@ private fun ringAdvertisements(address: String): Flow<RingAdvertisement> =
 val ringClientModule = module {
     single { PairedRingFile(androidContext().noBackupFilesDir) }
     single { AndroidRingBonds(androidContext()) }
+    // Gravel: the ring's button. Bound here, not behind VOICE_MQTT_ENABLED: it needs no broker and no Notebook.
+    single { RingButtonFile(androidContext().noBackupFilesDir) }
+    single<RingMediaKeys> { AndroidRingMediaKeys(androidContext()) }
+    single {
+        AndroidRingButtonSettings(
+            file = get(),
+            pairedRing = get<PairedRingFile>().address,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        )
+    } bind RingButtonSettings::class
     single {
         NotebookRingSink(
             notebookOn = {
@@ -567,6 +580,10 @@ val ringClientModule = module {
             lastWait = { sink.lastWait },
             imported = { sink.imported },
             startOver = { address -> positions(address).startOver() },
+            buttons = RingButtonController(
+                mapping = { get<AndroidRingButtonSettings>().mapping },
+                keys = get(),
+            ),
             marks = ElapsedRealtime,
         )
     }

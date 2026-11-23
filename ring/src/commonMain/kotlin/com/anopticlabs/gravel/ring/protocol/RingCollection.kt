@@ -9,12 +9,23 @@ private const val TAG_CLOCK_OFFSET = 0x35
 /** The highest sample rate accepted from the ring; a plausibility bound, far above what it records at. */
 const val MAX_RING_SAMPLE_RATE = 192_000
 
+/** How many payload bytes of an unknown record are kept for the log: enough to recognise an encoding, not the audio. */
+private const val UNKNOWN_RECORD_HEAD = 8
+
 /** Audio from one collection: unsigned 16-bit [samples] at [sampleRate] Hz. */
 class RingAudio internal constructor(val sampleRate: Int, val samples: IntArray)
 
 /**
+ * A record in a collection that this client does not use: its [tag], its payload [length] and the first few payload
+ * bytes, [head]. Kept only so a sync can say what the ring sent; nothing reads it as a value and nothing acts on it.
+ */
+class RingUnknownRecord(val tag: Int, val length: Long, val head: ByteArray)
+
+
+/**
  * One collection of a recording. Collections sharing [startIndex] are the parts of one recording, in the
  * order they were read; the [final] one closes it. [ringClock] and [clockOffset] date it, see [capturedAtUnixSeconds].
+ * [unknownRecords] are the records the parser skipped, kept for the log alone.
  */
 class RingCollection internal constructor(
     val audio: RingAudio,
@@ -22,6 +33,7 @@ class RingCollection internal constructor(
     val final: Boolean,
     val ringClock: Long?,
     val clockOffset: Long?,
+    val unknownRecords: List<RingUnknownRecord> = emptyList(),
 ) {
     /**
      * The Unix time the collection carries. Before the phone sets the ring's clock, the clock counts from zero
@@ -34,7 +46,8 @@ class RingCollection internal constructor(
 /**
  * Parses the answer to [RingRequest.ReadCollection]: a 24-bit length equal to the collection's size and a
  * zero byte, then records of a tag, a length (32-bit for audio, else 16-bit) and a payload. Records this
- * client does not use are skipped. A collection needs one audio record and one part record. Throws
+ * client does not use are skipped, and kept in [RingCollection.unknownRecords] so a sync can log them: the
+ * parser never guesses what a record means. A collection needs one audio record and one part record. Throws
  * [RingProtocolException] when the bytes do not have this shape; parsing is deterministic, so the same bytes
  * are refused the same way every time.
  */
@@ -47,6 +60,7 @@ fun parseRingCollection(data: ByteArray): RingCollection {
     var clock: Long? = null
     var offset: Long? = null
     val seen = mutableSetOf<Int>()
+    val unknown = mutableListOf<RingUnknownRecord>()
     var at = 4
     while (at < data.size) {
         val tag = data.u8(at)
@@ -76,11 +90,19 @@ fun parseRingCollection(data: ByteArray): RingCollection {
                 requireLength(tag, length, 4)
                 offset = data.u32(start)
             }
+            else -> unknown += RingUnknownRecord(tag, length, data.copyOfRange(start, minOf(end, start + UNKNOWN_RECORD_HEAD)))
         }
         at = end
     }
     val (startIndex, final) = part ?: throw RingProtocolException("a collection without a part record")
-    return RingCollection(audio ?: throw RingProtocolException("a collection without audio"), startIndex, final, clock, offset)
+    return RingCollection(
+        audio ?: throw RingProtocolException("a collection without audio"),
+        startIndex,
+        final,
+        clock,
+        offset,
+        unknown,
+    )
 }
 
 private fun requireLength(tag: Int, length: Long, least: Int) {

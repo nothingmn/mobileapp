@@ -1,6 +1,8 @@
 package com.anopticlabs.gravel.app
 
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.ring.button.RingButtonController
+import com.anopticlabs.gravel.ring.button.RingButtonMapping
 import com.anopticlabs.gravel.ring.link.RingLinkException
 import com.anopticlabs.gravel.ring.protocol.RingAdvertisement
 import com.anopticlabs.gravel.ring.sync.RingLinkFailure
@@ -58,6 +60,10 @@ const val MAX_RING_TRIES = 5
  * sink would leave recordings on the ring. A status worth retrying is tried up to [MAX_RING_TRIES] times in all; a
  * session that fails or that the sink stops holds syncing off for a while, one that ran out of time after importing
  * something does not, and a damaged saved position stops syncing until [importAgain].
+ *
+ * [buttons] sees every advertisement the search hears, so the ring's button is followed even while the Notebook is
+ * off or the position is lost, and an advertisement whose only reason to sync is that the button is down starts no
+ * session while that press is a tap the switch has taken over — see [RingButtonController].
  */
 class RingSyncRunner(
     private val paired: StateFlow<String?>,
@@ -69,6 +75,7 @@ class RingSyncRunner(
     private val lastWait: () -> RingWait?,
     private val imported: () -> Int,
     private val startOver: suspend (address: String) -> Unit,
+    private val buttons: RingButtonController = RingButtonController({ RingButtonMapping() }),
     private val clock: () -> Long = System::currentTimeMillis,
     private val marks: TimeSource = TimeSource.Monotonic,
     private val sessionLimit: Duration = 15.minutes,
@@ -108,6 +115,7 @@ class RingSyncRunner(
                 _searchFailed.value = false
                 _positionLost.value = false
                 attempts.reset()
+                buttons.forget()
                 if (address != null) runFor(address)
             }
         }
@@ -148,6 +156,15 @@ class RingSyncRunner(
         launch { search(address, latest) }
         for (advertisement in latest) {
             if (_positionLost.value || !attempts.ready() || !advertisement.pairable) continue
+            // The tap, and nothing else: an advertisement whose only reason to sync is the button being down, while
+            // the press is short enough to be the media gesture the switch has taken over. Any other reason to sync
+            // — a changed count, a clock request — is left alone, so a recording the ring made is never stranded.
+            if (advertisement.recording && !shouldSyncRing(advertisement.copy(recording = false), count) &&
+                buttons.holdsCapture(clock())
+            ) {
+                logger.d { "the button is down: no sync for this advertisement" }
+                continue
+            }
             val wanted = shouldSyncRing(advertisement, count)
             if (!wanted && !attempts.syncDue()) continue
             val wait = checked("checking the Notebook") { waitReason() }
@@ -177,6 +194,7 @@ class RingSyncRunner(
                     heard = true
                     _searchFailed.value = false
                     _lastHeard.value = clock()
+                    buttons.advertisement(clock(), it.recording)
                     latest.send(it)
                 }
             } catch (e: CancellationException) {
@@ -227,6 +245,7 @@ class RingSyncRunner(
             }
             if (outcome != null) {
                 _state.value = outcome
+                buttons.syncFinished(imported() - before)
                 return
             }
             delay(RETRY_DELAY)
