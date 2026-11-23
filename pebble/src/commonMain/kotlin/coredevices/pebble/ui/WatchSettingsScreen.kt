@@ -95,7 +95,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalFocusManager
@@ -128,6 +127,7 @@ import com.anopticlabs.gravel.ui.TextToSpeechKeys
 import com.anopticlabs.gravel.ui.rememberTextToSpeechSettings
 import com.anopticlabs.gravel.ui.rememberVoiceMqttSettings
 import com.anopticlabs.gravel.ui.stringResourceFor
+import com.anopticlabs.gravel.ui.widthInOrLongestWord
 import com.anopticlabs.gravel.ui.textModelsSummary
 import com.anopticlabs.gravel.ui.textToSpeechItemShown
 import com.anopticlabs.gravel.weather.WeatherConsentDialog
@@ -3198,17 +3198,11 @@ fun basicSettingsNumberFieldItem(
 )
 
 /**
- * Gravel: at most [max] wide or, when wider, the text's min intrinsic width (its widest stretch without a line-break
- * opportunity: ui-text-android 1.11.2, LayoutIntrinsics.getMinIntrinsicWidth) up to half the width offered, which
- * leaves the setting's title the other half.
+ * Gravel: the value slot this screen offers a setting — at most [max] wide or, when wider, the text's min intrinsic
+ * width up to half the width offered — was made here until the fork's upstream sync moved it beside [fontGrowth] in
+ * `com.anopticlabs.gravel.ui`, so the ring button's pickers take the same slot instead of setting a width of their
+ * own. Imported, not redefined here; the KDoc there carries the measurement it rests on.
  */
-private fun Modifier.widthInOrLongestWord(max: Dp) = layout { measurable, constraints ->
-    val longestWord = minOf(measurable.minIntrinsicWidth(constraints.maxHeight), constraints.maxWidth / 2)
-    val width = maxOf(max.roundToPx(), longestWord).coerceIn(constraints.minWidth, constraints.maxWidth)
-    val placeable = measurable.measure(constraints.copy(maxWidth = width))
-    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-}
-
 fun <T> basicSettingsDropdownItem(
     id: String? = null,
     title: String,

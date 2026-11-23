@@ -88,10 +88,12 @@ private fun TapChoice(
     var open by remember { mutableStateOf(false) }
     val chosen = facts.actionFor(tap)
     Row(verticalAlignment = Alignment.CenterVertically) {
+        // Gravel: the settings screen's value slot, so the gesture's name keeps half the row at the largest font size
+        // and a destination wider than that wraps inside its own half instead of squeezing the name out.
         Text(ringButtonLabelOf(tap), modifier = Modifier.weight(1f))
         Column {
             TextButton(onClick = { open = true }, enabled = facts.enabled) {
-                Text(ringButtonLabelOf(chosen))
+                Text(ringButtonLabelOf(chosen), modifier = Modifier.widthInOrLongestWord(150.dp))
             }
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                 for (action in RingButtonActionChoice.entries) {
