@@ -313,7 +313,9 @@ apk_facts() {
 verify() {
     local dir="$1" status=0
     [ -d "$dir" ] || die "no such directory: $dir"
-    ( cd "$dir" && ./gradlew --version >/dev/null 2>&1 ) || die "no gradlew in $dir"
+    [ -x "$dir/gradlew" ] || die "no executable gradlew in $dir"
+    command -v java >/dev/null 2>&1 ||
+        die "no java on PATH; export JAVA_HOME and ANDROID_HOME first (see ~/.local/opt/gravel-env.sh)"
 
     rule
     say "verifying $(git -C "$dir" rev-parse --short HEAD) in $dir"

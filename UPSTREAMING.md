@@ -76,8 +76,9 @@ default are blank in the repository (the same `?.takeIf { it.isNotBlank() }` pat
 flags), so a blank value means "no default" rather than an empty string, and the operator's own LAN never lands in a
 tracked file.
 
-*Check:* `git grep -n 'voiceBroker\|voiceHost' -- '*.properties'` shows commented lines only, and no
-`broker.example`-style value is used as a default in code that a test asserts on.
+*Check:* `grep -n 'voice' gradle.properties` shows `voiceMqttEnabled=false` and the five `voiceMqtt*` keys with
+nothing after the `=`. A value there is a fact about the machine that made the build, so none belongs in the
+repository; `VoiceConnectionDefaultsTest` holds the resolution order (stored value, then baked default, then empty).
 
 ### No Firebase, no Supabase, ever
 
