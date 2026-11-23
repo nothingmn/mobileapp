@@ -34,9 +34,10 @@ data class RingButtonEvent(
  * presses belong to one sequence while they follow each other by less than [gapMillis].
  *
  * Two inputs, and no clock inside: presses come from a [RingButtonPress] source, and [onTick] is called by that
- * source when it knows no further press of the sequence is coming — for the ring's own button record, the final
- * collection of the gesture. Both entry points take the millisecond they happened at, so the whole matrix is tested
- * without waiting, and neither the class nor its tests carry an Android type.
+ * source when it knows no further press of the sequence is coming — for the ring's own button record, once no new
+ * report has arrived for its quiet window (`RING_BUTTON_QUIET_MILLIS`). Both entry points take the millisecond they
+ * happened at, so the whole matrix is tested without waiting, and neither the class nor its tests carry an Android
+ * type.
  *
  * What it cannot do: it knows only what its source saw. A source that reports fewer presses than the user made — a
  * tap the ring never reported — makes a shorter gesture or none at all, never a different key. Every press and every

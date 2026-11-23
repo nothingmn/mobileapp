@@ -259,6 +259,38 @@ holds run on `SystemClock.elapsedRealtimeNanos` (`ElapsedRealtime` in
 runner starts, stops syncing until Import again. The ring's Devices entry
 shows where syncing stands in place of upstream's "Ready".
 
+### The ring's button as a media remote
+
+Off by default: Settings > General > Ring button turns the ring's button
+into play/pause, next and previous, with one destination per tap gesture, in
+English and French. It is the same button that records a note, so a hold and
+a tap-then-hold stay recordings and are not remappable; with the switch off
+the button does exactly what it did before, and a tap still starts no sync
+of its own beyond what the ring already advertised.
+
+The gesture is not the collection. The ring reports its button in record
+`0x53` inside a collection — two 32-bit words, the button being down and the
+ring's own count of the presses of the gesture it is reporting — and on the
+operator's phone (08:47:33, one triple tap) that arrived as three collections
+65 ms apart with the count climbing 1, 2, 3, **every one of them marked
+final**. `final` therefore says the collection is complete, not the gesture,
+and neither it nor the collection's start index can delimit one. What does is
+the silence: a report is kept, and nothing is sent until no further report
+has arrived for **150 ms**, at which point the highest count of that window
+is sent as one gesture. 150 ms is above the slowest gap measured inside one
+gesture (90 ms) with room for a slow read, and short enough that the key
+still feels connected; it is not Android's 300 ms double-tap timeout because
+the app is not deciding what a double tap is — the ring counts the presses
+itself. The cost is that a gesture's key arrives one window after its last
+report, and a gesture whose collections this code happens to read more than
+150 ms apart would settle as two.
+
+The sync is the only clock the button has, so a session waits out the window
+before it returns: the tap itself is what started the sync, and without that
+wait its key would never be sent. A hold rides the same window rather than
+dispatching on arrival — the ring is still writing the note's collections
+while the button is down, and the gesture ends when it comes up.
+
 ## Firebase
 
 The Firebase SDKs are gone via the same idea at a different seam: the

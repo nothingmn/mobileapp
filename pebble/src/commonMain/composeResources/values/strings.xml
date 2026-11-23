@@ -58,5 +58,5 @@
     <string name="ring_button_action_nothing">Nothing</string>
     <string name="ring_button_section_recording">Recording</string>
     <string name="ring_button_recording_note">Hold the button to record a note, or touch it and then hold to start recording. Both stay as recording and are not changed here.</string>
-    <string name="ring_button_source_note">The gesture is read from the ring's own report of its button, which the app collects when it syncs with the ring, so a tap is seen without anything being recorded.</string>
+    <string name="ring_button_source_note">The gesture is read from the ring's own report of its button, which the app collects when it syncs with the ring, so a tap is seen without anything being recorded. The key follows about 0.15 seconds after the last tap: that wait is what tells one tap from two.</string>
 </resources>

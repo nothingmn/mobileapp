@@ -2,7 +2,7 @@
 
 package com.anopticlabs.gravel.app
 
-import com.anopticlabs.gravel.ring.button.RING_BURST_QUIET_MILLIS
+import com.anopticlabs.gravel.ring.button.RING_BUTTON_QUIET_MILLIS
 import com.anopticlabs.gravel.ring.button.RingButtonAction
 import com.anopticlabs.gravel.ring.button.RingButtonController
 import com.anopticlabs.gravel.ring.button.RingButtonMapping
@@ -146,7 +146,7 @@ class RingButtonRunnerTest {
         runCurrent()
         paired.value = address
         runCurrent()
-        controller.quiet(1_000 + RING_BURST_QUIET_MILLIS)
+        controller.quiet(1_000 + RING_BUTTON_QUIET_MILLIS)
 
         assertEquals(emptyList(), sent, "the gesture the old pairing reported is gone")
     }

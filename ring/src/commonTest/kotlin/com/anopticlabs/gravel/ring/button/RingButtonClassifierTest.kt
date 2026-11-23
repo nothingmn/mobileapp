@@ -271,10 +271,14 @@ class RingButtonMappingTest {
 
 /**
  * The whole path the app runs: the ring's own report of its button, record 0x53 in a collection, out as the media key
- * the user mapped. Each burst below is what a real gesture looked like on the operator's phone: the parts of one
- * collection group, its count climbing as the taps land, the last part marked final.
- */
-class RingButtonControllerTest {
+ * the user mapped.
+ *
+ * Every report here is what the ring actually sent on the operator's phone at 08:47:33: one collection per press,
+ * **65 ms apart**, the ring's count climbing 1, 2, 3 across the collections of one gesture, and **every one of them
+ * marked final**. Settling on `final` sent a key per press — play/pause, then next, then previous for one triple tap
+ * — which is the defect these tests hold shut: nothing is sent until the reports stop, and the highest count of the
+ * window is the one gesture that is sent.
+ */class RingButtonControllerTest {
 
     private class Keys : RingMediaKeys {
         val sent = mutableListOf<RingButtonAction>()
@@ -283,9 +287,21 @@ class RingButtonControllerTest {
         }
     }
 
-    private val keys = Keys()
+    /**
+     * One controller and what it did. [dispatched] counts the gestures that reached the mapping: a hold sends no key,
+     * so the keys alone cannot show that a hold was recognised exactly once.
+     */
+    private class Buttons(mapping: RingButtonMapping) {
+        val keys = Keys()
+        var dispatched = 0
+            private set
+        val controller = RingButtonController({ dispatched++; mapping }, keys)
+    }
 
-    private fun controller(mapping: RingButtonMapping) = RingButtonController({ mapping }, keys)
+    /** The measured gap between the presses of one gesture. */
+    private val measuredGap = 65L
+
+    private fun buttons(mapping: RingButtonMapping) = Buttons(mapping)
 
     private val allMapped = RingButtonMapping(
         enabled = true,
@@ -294,124 +310,244 @@ class RingButtonControllerTest {
         tripleClick = RingButtonAction.PREVIOUS,
     )
 
-    /** One gesture's collections: the counts as the ring reported them, the last one closing the group. */
-    private fun RingButtonController.burst(vararg counts: Int, held: Boolean = false, start: Long = 5_003, at: Long = 10_000) {
+    private fun record(count: Int, held: Boolean = false) = RingButtonRecord(held = held, count = count)
+
+    /**
+     * One gesture's reports as the ring made them: [counts] 65 ms apart, a distinct collection each time, every one
+     * final. The ring closes no gesture with a marker this code can trust, so nothing here settles anything.
+     */
+    private fun RingButtonController.reports(
+        vararg counts: Int,
+        held: Boolean = false,
+        start: Long = 5_003,
+        at: Long = 10_000,
+    ) {
         counts.forEachIndexed { i, count ->
             collection(
-                RingButtonRecord(held = held && i == counts.lastIndex, count = count),
-                startIndex = start,
-                final = i == counts.lastIndex,
-                atMillis = at + i * RING_BURST_STEP_MILLIS,
+                record(count, held = held && i == counts.lastIndex),
+                startIndex = start + i,
+                final = true,
+                atMillis = at + i * measuredGap,
             )
         }
     }
 
-    @Test
-    fun aSingleTapSendsTheKeyItIsMappedTo() {
-        controller(RingButtonMapping(enabled = true)).burst(1)
+    /** When the ring has said nothing more about a gesture whose last report was at [lastReport]. */
+    private fun lastReportOf(count: Int, at: Long = 10_000): Long = at + (count - 1) * measuredGap
 
-        assertEquals(listOf(RingButtonAction.PLAY_PAUSE), keys.sent)
+    @Test
+    fun aSingleTapSendsExactlyOneKeyOneWindowAfterIt() {
+        val buttons = buttons(RingButtonMapping(enabled = true))
+
+        buttons.controller.reports(1)
+        assertEquals(emptyList(), buttons.keys.sent, "a report on its own sends nothing: the ring may still be counting")
+        assertEquals(
+            RING_BUTTON_QUIET_MILLIS,
+            buttons.controller.settlesIn(10_000),
+            "the wait is the quiet window and nothing else",
+        )
+
+        buttons.controller.quiet(lastReportOf(1) + RING_BUTTON_QUIET_MILLIS)
+
+        assertEquals(listOf(RingButtonAction.PLAY_PAUSE), buttons.keys.sent, "one tap, one key")
+        assertEquals(1, buttons.dispatched)
     }
 
     @Test
-    fun aDoubleTapSendsNextAndATripleSendsPrevious() {
-        val controller = controller(allMapped)
+    fun aDoubleTap65MsApartSendsNextOnceAndNeverTheClick() {
+        // The measurement, as a test: two collections 65 ms apart, counts 1 and 2, both final. Settling on the final
+        // one sent PLAY_PAUSE for the first press and NEXT for the second, so pausing a track skipped it.
+        val buttons = buttons(allMapped)
 
-        controller.burst(1, 2, start = 5_003, at = 10_000)
-        controller.burst(1, 2, 3, start = 5_008, at = 11_000)
+        buttons.controller.reports(1, 2)
+        assertEquals(emptyList(), buttons.keys.sent, "neither report may fire on arrival")
 
-        assertEquals(listOf(RingButtonAction.NEXT, RingButtonAction.PREVIOUS), keys.sent)
+        buttons.controller.quiet(lastReportOf(2) + RING_BUTTON_QUIET_MILLIS)
+
+        assertEquals(
+            listOf(RingButtonAction.NEXT),
+            buttons.keys.sent,
+            "the second tap's destination, once, and not the first's",
+        )
+        assertEquals(1, buttons.keys.sent.size)
+        assertEquals(1, buttons.dispatched)
     }
 
     @Test
-    fun eachGestureReachesItsOwnKeyAndTheSwitchGatesAllOfThem() {
-        val on = controller(allMapped)
-        on.burst(1, start = 1, at = 1_000)
-        on.burst(1, 2, start = 2, at = 2_000)
-        on.burst(1, 2, 3, start = 3, at = 3_000)
-        assertEquals(listOf(RingButtonAction.PLAY_PAUSE, RingButtonAction.NEXT, RingButtonAction.PREVIOUS), keys.sent)
+    fun aTripleTapSendsOnlyPrevious() {
+        // The operator's triple tap at 08:47:33: three collections, counts 1/2/3, all final. It sent all three keys
+        // and ended on the wrong one.
+        val buttons = buttons(allMapped)
 
-        keys.sent.clear()
-        val off = controller(allMapped.copy(enabled = false))
-        off.burst(1, start = 4, at = 4_000)
-        off.burst(1, 2, start = 5, at = 5_000)
-        off.burst(1, 2, 3, start = 6, at = 6_000)
-        assertEquals(emptyList(), keys.sent, "with the switch off the button stays the ring's")
+        buttons.controller.reports(1, 2, 3)
+        buttons.controller.quiet(lastReportOf(3) + RING_BUTTON_QUIET_MILLIS)
+
+        assertEquals(listOf(RingButtonAction.PREVIOUS), buttons.keys.sent, "one gesture, one key: the last of the three")
+        assertEquals(1, buttons.dispatched)
     }
 
     @Test
-    fun aReportThatTheButtonIsHeldIsAHoldAndSendsNoKey() {
-        controller(allMapped).burst(1, held = true, at = 10_000)
+    fun twoGesturesSeparatedByMoreThanTheWindowSendTwoGesturesInOrder() {
+        val buttons = buttons(allMapped)
 
-        assertEquals(emptyList(), keys.sent, "a hold is the recording it always was")
+        buttons.controller.reports(1, at = 10_000)
+        buttons.controller.reports(1, 2, at = 10_000 + RING_BUTTON_QUIET_MILLIS + 1)
+
+        assertEquals(listOf(RingButtonAction.PLAY_PAUSE), buttons.keys.sent, "the first gesture closed when the window did")
+
+        buttons.controller.quiet(lastReportOf(2, at = 10_000 + RING_BUTTON_QUIET_MILLIS + 1) + RING_BUTTON_QUIET_MILLIS)
+
+        assertEquals(
+            listOf(RingButtonAction.PLAY_PAUSE, RingButtonAction.NEXT),
+            buttons.keys.sent,
+            "two gestures, each sent once, in the order they were made",
+        )
+        assertEquals(2, buttons.dispatched)
     }
 
     @Test
-    fun aTapThenAHoldIsAClickHoldAndSendsNoKey() {
-        // The ring counts the held press with the tap that came before it: two presses, the button down.
-        controller(allMapped).burst(1, 2, held = true, at = 10_000)
+    fun aReportJustInsideTheWindowJoins() {
+        val buttons = buttons(allMapped)
+        buttons.controller.collection(record(1), startIndex = 5_003, final = true, atMillis = 10_000)
+        buttons.controller.collection(
+            record(2),
+            startIndex = 5_004,
+            final = true,
+            atMillis = 10_000 + RING_BUTTON_QUIET_MILLIS - 1,
+        )
+        assertEquals(emptyList(), buttons.keys.sent, "one millisecond inside the window is the same gesture")
 
-        assertEquals(emptyList(), keys.sent)
+        buttons.controller.quiet(10_000 + RING_BUTTON_QUIET_MILLIS - 1 + RING_BUTTON_QUIET_MILLIS)
+
+        assertEquals(listOf(RingButtonAction.NEXT), buttons.keys.sent, "so the two presses are one double click")
+        assertEquals(1, buttons.dispatched)
+    }
+
+    @Test
+    fun aReportJustOutsideTheWindowStartsFreshAndDoesNotResendTheOldGesturesKey() {
+        val buttons = buttons(allMapped)
+        buttons.controller.collection(record(1), startIndex = 5_003, final = true, atMillis = 10_000)
+        buttons.controller.collection(
+            record(2),
+            startIndex = 5_004,
+            final = true,
+            atMillis = 10_000 + RING_BUTTON_QUIET_MILLIS,
+        )
+
+        assertEquals(
+            listOf(RingButtonAction.PLAY_PAUSE),
+            buttons.keys.sent,
+            "the gesture was sent as it stood when the window closed, and is not sent again",
+        )
+
+        buttons.controller.quiet(10_000 + RING_BUTTON_QUIET_MILLIS + RING_BUTTON_QUIET_MILLIS)
+
+        assertEquals(
+            listOf(RingButtonAction.PLAY_PAUSE, RingButtonAction.NEXT),
+            buttons.keys.sent,
+            "the report past the window began a fresh gesture rather than joining the old one",
+        )
+        assertEquals(2, buttons.dispatched)
+    }
+
+    @Test
+    fun aHeldReportIsAHoldRecognisedOnceAndSendsNoKey() {
+        val buttons = buttons(allMapped)
+
+        buttons.controller.reports(1, held = true)
+        assertEquals(emptyList(), buttons.keys.sent)
+        assertEquals(0, buttons.dispatched, "a hold waits for the window like everything else")
+
+        buttons.controller.quiet(lastReportOf(1) + RING_BUTTON_QUIET_MILLIS)
+
+        assertEquals(emptyList(), buttons.keys.sent, "a hold is the recording it always was")
+        assertEquals(1, buttons.dispatched, "the hold itself was recognised, once")
+    }
+
+    @Test
+    fun theReportsOfAHoldArrivingWhileItIsDownStillMakeOneHold() {
+        // The ring keeps writing collections while the button is down; each one only refreshes the window, so one
+        // hold is recognised once rather than five times.
+        val buttons = buttons(allMapped)
+
+        buttons.controller.reports(1, held = true, at = 20_000)
+        buttons.controller.quiet(20_000 + RING_BUTTON_QUIET_MILLIS - 1)
+        buttons.controller.reports(1, held = true, at = 20_000 + RING_BUTTON_QUIET_MILLIS - 1)
+        buttons.controller.quiet(20_000 + 2 * RING_BUTTON_QUIET_MILLIS - 1)
+
+        assertEquals(emptyList(), buttons.keys.sent)
+        assertEquals(1, buttons.dispatched)
+    }
+
+    @Test
+    fun aTapThenAHoldIsAClickHoldRecognisedOnceAndSendsNoKey() {
+        // The ring counts the held press with the tap that came before it: two presses, the button down. Both reports
+        // are inside one window, so the tap is not sent on its own before the hold arrives.
+        val buttons = buttons(allMapped)
+
+        buttons.controller.reports(1, 2, held = true)
+        buttons.controller.quiet(lastReportOf(2) + RING_BUTTON_QUIET_MILLIS)
+
+        assertEquals(emptyList(), buttons.keys.sent, "a click then a hold is a recording, not a media key")
+        assertEquals(1, buttons.dispatched, "and the tap was not sent as a click of its own first")
     }
 
     @Test
     fun aGestureMappedToNothingSendsNoKey() {
-        controller(RingButtonMapping(enabled = true, click = RingButtonAction.NOTHING)).burst(1)
+        val buttons = buttons(RingButtonMapping(enabled = true, click = RingButtonAction.NOTHING))
 
-        assertEquals(emptyList(), keys.sent)
+        buttons.controller.reports(1)
+        buttons.controller.quiet(lastReportOf(1) + RING_BUTTON_QUIET_MILLIS)
+
+        assertEquals(emptyList(), buttons.keys.sent)
+        assertEquals(1, buttons.dispatched, "the gesture still reached the mapping that says it does nothing")
     }
 
     @Test
-    fun aGroupThatNeverClosedIsSettledOnTheSilenceOnlyOnceItHasPassed() {
-        val controller = controller(allMapped)
-        controller.collection(RingButtonRecord(held = false, count = 2), 5_003, final = false, atMillis = 10_000)
+    fun aGestureIsSentOnlyOnTheSilenceAndOnlyOnce() {
+        val buttons = buttons(allMapped)
+        buttons.controller.collection(record(2), startIndex = 5_003, final = false, atMillis = 10_000)
 
-        controller.quiet(10_000 + RING_BURST_QUIET_MILLIS - 1)
-        assertEquals(emptyList(), keys.sent, "still inside the quiet gap: the ring may still be writing")
+        buttons.controller.quiet(10_000 + RING_BUTTON_QUIET_MILLIS - 1)
+        assertEquals(emptyList(), buttons.keys.sent, "still inside the window: the ring may still be writing this gesture")
 
-        controller.quiet(10_000 + RING_BURST_QUIET_MILLIS)
-        assertEquals(listOf(RingButtonAction.NEXT), keys.sent, "the silence settles the two taps it reported")
-    }
+        buttons.controller.quiet(10_000 + RING_BUTTON_QUIET_MILLIS)
+        assertEquals(listOf(RingButtonAction.NEXT), buttons.keys.sent, "the silence settles the two taps it reported")
 
-    @Test
-    fun aGroupThatNeverClosedIsDroppedRatherThanSettledWhenTheNextOneArrives() {
-        val controller = controller(allMapped)
-        controller.collection(RingButtonRecord(held = false, count = 2), 5_003, final = false, atMillis = 10_000)
-
-        controller.burst(1, start = 5_010, at = 10_100)
-
-        assertEquals(
-            listOf(RingButtonAction.PLAY_PAUSE),
-            keys.sent,
-            "only the group the ring closed sent a key; the open one's count was never settled",
-        )
+        buttons.controller.quiet(20_000)
+        assertEquals(listOf(RingButtonAction.NEXT), buttons.keys.sent, "a window already settled is not settled again")
+        assertEquals(0L, buttons.controller.settlesIn(20_000), "nothing is open any more")
     }
 
     @Test
     fun aCountThatIsNotAGestureSendsNothing() {
-        val controller = controller(allMapped)
+        val buttons = buttons(allMapped)
 
-        controller.burst(0, start = 1, at = 1_000)
-        controller.burst(4, start = 2, at = 2_000)
+        buttons.controller.reports(0, start = 1, at = 1_000)
+        buttons.controller.quiet(1_000 + RING_BUTTON_QUIET_MILLIS)
+        buttons.controller.reports(4, start = 2, at = 2_000)
+        buttons.controller.quiet(2_000 + RING_BUTTON_QUIET_MILLIS)
 
-        assertEquals(emptyList(), keys.sent)
+        assertEquals(emptyList(), buttons.keys.sent)
     }
 
     @Test
     fun forgettingADroppedPairingForgetsAHalfReadGesture() {
-        val controller = controller(allMapped)
-        controller.collection(RingButtonRecord(held = false, count = 2), 5_003, final = false, atMillis = 10_000)
+        val buttons = buttons(allMapped)
+        buttons.controller.collection(record(2), startIndex = 5_003, final = false, atMillis = 10_000)
 
-        controller.forget()
-        controller.quiet(20_000)
+        buttons.controller.forget()
+        buttons.controller.quiet(20_000)
 
-        assertEquals(emptyList(), keys.sent)
+        assertEquals(emptyList(), buttons.keys.sent)
+        assertEquals(0L, buttons.controller.settlesIn(20_000))
     }
 
     @Test
     fun aMediaSessionThatRefusesTheKeyDoesNotEscapeTheController() {
         val refusing = RingButtonController({ RingButtonMapping(enabled = true) }, RingMediaKeys { error("no media session") })
 
-        refusing.burst(1)
+        refusing.reports(1)
+        refusing.quiet(10_000 + RING_BUTTON_QUIET_MILLIS)
     }
 }

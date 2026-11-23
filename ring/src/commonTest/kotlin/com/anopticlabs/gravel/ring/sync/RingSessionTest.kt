@@ -2,6 +2,7 @@
 
 package com.anopticlabs.gravel.ring.sync
 
+import com.anopticlabs.gravel.ring.button.RING_BUTTON_QUIET_MILLIS
 import com.anopticlabs.gravel.ring.button.RingButtonAction
 import com.anopticlabs.gravel.ring.button.RingButtonController
 import com.anopticlabs.gravel.ring.button.RingButtonMapping
@@ -307,20 +308,29 @@ class RingSessionTest {
         assertEquals(listOf(1), sink.firstIndexes, "only the recording after the tap is a note")
         assertEquals(listOf(RingButtonAction.PLAY_PAUSE), keys, "and the tap reaches the media key it is mapped to")
         assertEquals(2, store.next, "the tap's collection is still read and passed, so it is not read again")
+        assertEquals(
+            RING_BUTTON_QUIET_MILLIS,
+            testScheduler.currentTime,
+            "the key comes one quiet window after the ring's last report of the tap, which is the whole latency",
+        )
     }
 
     @Test
-    fun aDoubleTapIsOneGestureReadFromTheLastPartOfItsGroup() = runTest {
-        // The shape measured on the phone: two parts sharing a start index, the count climbing 1 then 2, the second
-        // one final.
-        ringHolds(0 to ringButton(0, final = false, count = 1), 1 to ringButton(0, final = true, count = 2))
-        ring.count = 2
+    fun aTripleTapMarkedFinalOnEveryCollectionIsOneGestureAndOneKey() = runTest {
+        // The shape measured on the phone at 08:47:33: one collection per press, the ring's count climbing 1, 2, 3,
+        // and every one of them final. Settling on final sent play/pause, then next, then previous for one gesture.
+        ringHolds(
+            0 to ringButton(0, final = true, count = 1),
+            1 to ringButton(1, final = true, count = 2),
+            2 to ringButton(2, final = true, count = 3),
+        )
+        ring.count = 3
 
         assertEquals(RingSessionEnd.SYNCED, session().run(idle))
 
-        assertEquals(listOf(RingButtonAction.NEXT), keys, "two taps, sent once")
+        assertEquals(listOf(RingButtonAction.PREVIOUS), keys, "one gesture, one key, and it is the triple's")
         assertEquals(emptyList(), sink.firstIndexes)
-        assertEquals(2, store.next)
+        assertEquals(3, store.next)
     }
 
     @Test
@@ -335,14 +345,17 @@ class RingSessionTest {
     }
 
     @Test
-    fun aGestureTheRingNeverClosedSendsNothingWhenTheSyncIsAlreadyOver() = runTest {
+    fun aGestureTheRingNeverClosedIsStillSentOnceTheSessionHasWaitedOutItsWindow() = runTest {
+        // Nothing closes this report — it is not final and the ring is not recording — so the only thing that can
+        // send it is the session's own wait on the way out.
         ringHolds(0 to ringButton(0, final = false, count = 2))
         ring.count = 1
 
         assertEquals(RingSessionEnd.SYNCED, session().run(idle))
 
-        assertEquals(emptyList(), keys, "a count the ring never settled is not a gesture")
+        assertEquals(listOf(RingButtonAction.NEXT), keys, "the two taps the ring reported are sent, once")
         assertEquals(emptyList(), sink.firstIndexes)
+        assertEquals(RING_BUTTON_QUIET_MILLIS, testScheduler.currentTime, "after one quiet window and no longer")
     }
 
     @Test

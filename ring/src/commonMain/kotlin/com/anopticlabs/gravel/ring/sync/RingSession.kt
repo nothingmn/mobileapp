@@ -1,6 +1,7 @@
 package com.anopticlabs.gravel.ring.sync
 
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.ring.button.RING_BUTTON_QUIET_MILLIS
 import com.anopticlabs.gravel.ring.button.RingButtonController
 import com.anopticlabs.gravel.ring.button.RingButtonMapping
 import com.anopticlabs.gravel.ring.protocol.RingAdvertisement
@@ -19,6 +20,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
@@ -82,8 +84,10 @@ private const val MAX_SAMPLES_PER_MILLI = 16
  * A collection carrying the ring's own button report ([RingCollection.button]) is the button being read, not a
  * note: a tap's collection is handed to [buttons] and kept out of the assembly, so it never becomes a recording and
  * the sink never sees a one-millisecond recording to drop. A collection whose report says the button is held keeps
- * its audio, because a hold is still the note it always was. [buttons] is also given the clock while the ring is
- * still recording, so a gesture whose last part never arrived is settled on the quiet gap rather than lost.
+ * its audio, because a hold is still the note it always was. [buttons] dispatches nothing when a report arrives — it
+ * waits for the ring to stop reporting the gesture — so this session is its clock twice over: [buttons.quiet] while
+ * the ring is still recording, and [settleTheButton] before it returns, which is the call that sends the key of the
+ * last gesture when the tap that started the sync is all there was.
  */
 class RingSession(
     private val connection: RingConnection,
@@ -175,14 +179,35 @@ class RingSession(
                 store.setNextIndex(open.firstOrNull()?.first ?: next)
             }
             if (!now.recording) {
+                settleTheButton(started)
                 store.setLastCount(now.collectionCount)
                 return RingSessionEnd.SYNCED
             }
             if (started.elapsedNow() >= maxDuration) return RingSessionEnd.STILL_RECORDING
             delay(pollInterval)
-            // The gesture's collections may have stopped without the ring closing the group; this is the clock that
-            // notices, and it only runs while the ring is still saying it is recording something.
+            // The button's reports may have stopped without anything else happening; this is the clock that notices,
+            // and it only runs while the ring is still saying it is recording something.
             buttons.quiet(buttonClock())
+        }
+    }
+
+    /**
+     * Waits out the button's quiet window when a report has been read and no later one has, so the gesture that
+     * report belonged to is sent before the session ends.
+     *
+     * A report settles nothing on arrival any more — it waits to see whether the ring reports another press of the
+     * same gesture — so a session that returned the moment the ring said it was not recording would drop every tap:
+     * the tap itself is what starts the sync, and the key is one [RING_BUTTON_QUIET_MILLIS] behind it. Bounded by
+     * [maxDuration] like the rest of the session, and by the window in the ordinary case. A session that ends by
+     * throwing does not settle: a gesture the ring was still counting when the link died is not sent, because a key
+     * for a gesture nobody finished is worse than a tap that does nothing.
+     */
+    private suspend fun settleTheButton(started: TimeMark) {
+        while (true) {
+            buttons.quiet(buttonClock())
+            val wait = buttons.settlesIn(buttonClock())
+            if (wait <= 0L || started.elapsedNow() >= maxDuration) return
+            delay(minOf(wait, pollInterval.inWholeMilliseconds).milliseconds)
         }
     }
 
@@ -211,8 +236,9 @@ class RingSession(
                     record.head.joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
             }
         }
-        // One line per button report the ring made, so the next failure can be read off logcat: what the ring
-        // said, on which collection, and whether it closed the gesture.
+        // One line per button report the ring made, so the next failure can be read off logcat: what the ring said, on
+        // which collection, and whether that collection was marked final (which says nothing about the gesture — see
+        // RingButtonController).
         collection.button?.let { button ->
             log.d {
                 "collection $index (start ${collection.startIndex}${if (collection.final) ", final" else ""}): " +
