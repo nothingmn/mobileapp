@@ -117,7 +117,8 @@ class SettingsRowsFontConventionsTest {
         val at = settingsScreen.indexOf("fun basicSettingsActionItem(")
         assertTrue(at >= 0, "basicSettingsActionItem is gone; the fork's rows no longer share one builder")
         // The declaration and its body, which runs from here to the next top-level declaration.
-        val head = settingsScreen.substring(at, settingsScreen.indexOf("\nfun ", at + 1).let { if (it < 0) settingsScreen.length else it })
+        val end = settingsScreen.indexOf("\nfun ", at + 1).let { if (it < 0) settingsScreen.length else it }
+        val head = settingsScreen.substring(at, end)
         for (clamp in listOf("maxLines", "lineHeight")) {
             assertTrue(
                 !head.contains(clamp),
@@ -126,7 +127,7 @@ class SettingsRowsFontConventionsTest {
         }
         // The description's own size is a `sp`, so it grows with the phone's font size; a `dp` there would not.
         assertTrue(
-            head.contains("Text(description, fontSize = 12.sp)"),
+            Regex("""Text\(description,\s*fontSize = [\d.]+\s*\.sp\)""").containsMatchIn(head),
             "the description is no longer drawn at a font size that follows the phone's",
         )
     }
