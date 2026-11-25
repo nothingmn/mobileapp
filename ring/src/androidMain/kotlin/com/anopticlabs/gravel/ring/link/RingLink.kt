@@ -108,6 +108,7 @@ private suspend fun openRingLink(
                     connects.gattConnected()
                 }
                 try {
+                    connects.requested()
                     peripheral.connect()
                 } finally {
                     up.cancel()

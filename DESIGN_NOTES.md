@@ -245,14 +245,19 @@ that still holds the two extra numbers reads as the switch and the three
 destinations it holds.
 
 The press is timed instead, and the timing is what a later attempt would be
-judged by. The open is marked as each step of it finishes: the GATT connection,
-service discovery, the control channel's subscription, the data channel's and the
-moment the link could carry the session's first request (`RingConnectTiming`,
-`RingConnectMarks.line`). The GATT mark is taken from the peripheral's state
+judged by. The open is marked as each step of it finishes: the connect being
+asked for, the GATT connection, service discovery, the control channel's
+subscription, the data channel's and the moment the link could carry the
+session's first request (`RingConnectTiming`, `RingConnectMarks.line`). The
+request's mark sits immediately before `connect()`, so the line's first gap is
+split in two — from the advertisement the runner heard to the moment the radio
+was asked for the link, which is this app's own hand-off, and from there to the
+link, which is Android's — and a slow queue in the app can no longer be blamed
+on the radio or the reverse. The GATT mark is taken from the peripheral's state
 rather than after `connect()` returns, because `connect()` returns only once the
 services are there: stamped afterwards, discovery would be folded into the wait
 for the link and the two steps could not be told apart. One line per press is
-written at debug on the `RingButton` tag with those five gaps, and the controller
+written at debug on the `RingButton` tag with those six gaps, and the controller
 writes a second with the advertisement, the record and the key
 (`RingPressMarks.line`). Every number in both comes from the device.
 
@@ -260,6 +265,27 @@ That line is why the open was examined at all: the first measurement put about
 3.2 s between the advertisement and a usable link, far more than the 152 ms
 debounce the setting had been judged by, so the cost was in the open and had to
 be attributed.
+
+Where the wait before the advertisement goes is not in the runner. A search
+asks kable for the ring's service and kable starts **one** Android scan and
+leaves it running until the flow is cancelled (`BluetoothLeScannerAndroidScanner`
+in kable 0.43.1: `startScan(filters, settings, callback)` … `awaitClose { stopScan(callback) }`),
+so the runner's own gaps — the rescan delay, the rest after a sync — sit beside
+a scan that is already listening, not inside it. What the scan listens through
+is Android's duty cycle, and it is the **low-power** one: `ScannerBuilder` asks
+for `ScanSettings.Builder().build()` and sets no scan mode, and Android's
+default mode is `SCAN_MODE_LOW_POWER` — a short window every few seconds, so an
+advertisement that arrives between windows waits for the next one. That wait is
+ours only in the sense that nothing in this repository ever asked for anything
+faster; it is the platform's schedule, not a gap the app introduces. Measured at
+6d71d717 with the switch on: six presses, `advertisement -> connected` 1.0 to
+3.3 s, every advertisement heard, every key correct. A faster mode was
+considered and **not** taken: the operator's own bar for the phone is a three to
+five second wait and the shipped behaviour meets it, so the phone's battery is
+not spent on shortening it. Were it ever wanted, it would be
+`SCAN_MODE_LOW_LATENCY` while the switch is on and the platform's default with
+it off, restarting the scan when the switch turns; the cost would be the
+phone's, paid only while the user has handed the button to the phone.
 
 Whether the link is encrypted is up to Android and the ring.
 `btm_ble_connection_established` (android16-release,
