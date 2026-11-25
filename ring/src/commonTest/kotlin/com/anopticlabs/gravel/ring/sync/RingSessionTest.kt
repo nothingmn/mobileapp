@@ -41,6 +41,7 @@ class RingSessionTest {
     private fun TestScope.session(
         maxRecordingMillis: Long = 5 * 60 * 1000L,
         mapping: RingButtonMapping = RingButtonMapping(enabled = true),
+        sink: RingRecordingSink = this@RingSessionTest.sink,
     ) = RingSession(
         ring,
         store,
@@ -296,23 +297,81 @@ class RingSessionTest {
     }
 
     @Test
-    fun aTapsCollectionIsTheButtonAndNeverARecording() = runTest {
-        // Two seconds of audio in the button's collection: long enough that the Notebook would have kept it, so the
-        // empty list below proves the collection never entered the audio path at all rather than being a tap the
-        // sink dropped for its length.
-        ringHolds(0 to ringButton(0, final = true, count = 1, millis = 2_000), 1 to ringPart(1, true))
+    fun aTapSendsItsKeyAndEveryCollectionItWasWrittenOnGoesToTheSink() = runTest {
+        // The ring attaches its button report to collections that carry audio, so the report cannot be a reason to
+        // withhold one. Both collections here reach the sink; the Notebook drops the one-millisecond tap for its
+        // length, which is the drop `anEmptyTapIsDroppedByTheSinkForItsLength` proves happens there.
+        ringHolds(0 to ringButton(0, final = true, count = 1), 1 to ringPart(1, true))
         ring.count = 2
 
         assertEquals(RingSessionEnd.SYNCED, session().run(idle))
 
-        assertEquals(listOf(1), sink.firstIndexes, "only the recording after the tap is a note")
-        assertEquals(listOf(RingButtonAction.PLAY_PAUSE), keys, "and the tap reaches the media key it is mapped to")
-        assertEquals(2, store.next, "the tap's collection is still read and passed, so it is not read again")
+        assertEquals(listOf(0, 1), sink.firstIndexes, "the tap's collection is read and handed over like any other")
+        assertEquals(listOf(10, 10_000), sink.stored.map { it.samples.size }, "the tap's ten samples and the note after it")
+        assertEquals(listOf(RingButtonAction.PLAY_PAUSE), keys, "the tap reaches the media key it is mapped to")
+        assertEquals(2, store.next, "the tap's collection is passed, so it is not read again")
         assertEquals(
             RING_BUTTON_QUIET_MILLIS,
             testScheduler.currentTime,
             "the key comes one quiet window after the ring's last report of the tap, which is the whole latency",
         )
+    }
+
+    @Test
+    fun anEmptyTapIsDroppedByTheSinkForItsLengthNotByTheSession() = runTest {
+        // What the tap costs now: one collection read, one finished recording handed over, and the Notebook's own
+        // floor dropping it as it always did. If the session withheld the collection instead, `handed` would be
+        // missing the tap and a hold's closing part would go missing with it.
+        val floor = FloorSink(floorMillis = 1_000)
+        ringHolds(0 to ringButton(0, final = true, count = 1), 1 to ringPart(1, true))
+
+        assertEquals(RingSessionEnd.SYNCED, session(sink = floor).run(idle))
+
+        assertEquals(listOf(10_000), floor.stored.map { it.samples.size }, "only the real note is kept")
+        assertTrue(0 in floor.handed, "but the tap's collection was handed to the sink, which is where it is dropped")
+        assertEquals(2, store.next, "and passed, so the next sync does not read it again")
+        assertEquals(listOf(RingButtonAction.PLAY_PAUSE), keys)
+    }
+
+    @Test
+    fun aHoldWhosePartsCarryButtonReportsIsOneRecordingHandedOver() = runTest {
+        // The shape the regressed code lost: the ring marks every collection of a hold with its button report, and
+        // the report says `held` is false on the first part (before the button went down) and on the last one (where
+        // it came up). The last part is the one that closes the note, so discarding either loses the whole
+        // recording — the operator's report, exactly.
+        ringHolds(
+            0 to ringButton(0, final = false, count = 1, held = false, millis = 1_000),
+            1 to ringButton(0, final = false, count = 1, held = true, millis = 1_000),
+            2 to ringButton(0, final = true, count = 1, held = false, millis = 1_000),
+        )
+        ring.count = 2
+
+        assertEquals(RingSessionEnd.SYNCED, session().run(idle))
+
+        assertEquals(listOf(0), sink.firstIndexes, "one recording, starting at its first part")
+        assertEquals(1, sink.stored.size)
+        assertEquals(30_000, sink.stored.single().samples.size, "all three seconds of the hold are in it")
+        assertEquals(3, store.next, "and the sync has moved past all three parts")
+        assertEquals(emptyList(), keys, "a hold is the ring's own note and is left to it")
+    }
+
+    @Test
+    fun aButtonReportInTheMiddleOfAGroupDoesNotLoseTheRecording() = runTest {
+        // A report arriving between two parts of one group is the button's business only: the group keeps being
+        // assembled, and the final part closes it. This one says the button is not held, the report the old code
+        // treated as a reason to throw the group away.
+        ringHolds(
+            0 to ringPart(0, final = false),
+            1 to ringButton(0, final = false, count = 1, held = false, millis = 1_000),
+            2 to ringPart(0, final = true),
+        )
+
+        assertEquals(RingSessionEnd.SYNCED, session().run(idle))
+
+        assertEquals(1, sink.stored.size, "the report did not break the group")
+        assertEquals(30_000, sink.stored.single().samples.size)
+        assertEquals(listOf(0), sink.firstIndexes)
+        assertEquals(3, store.next)
     }
 
     @Test
@@ -329,7 +388,11 @@ class RingSessionTest {
         assertEquals(RingSessionEnd.SYNCED, session().run(idle))
 
         assertEquals(listOf(RingButtonAction.PREVIOUS), keys, "one gesture, one key, and it is the triple's")
-        assertEquals(emptyList(), sink.firstIndexes)
+        assertEquals(
+            listOf(0, 1, 2),
+            sink.firstIndexes,
+            "each press's collection is a recording the Notebook drops for its length; the session withholds none",
+        )
         assertEquals(3, store.next)
     }
 
@@ -374,12 +437,15 @@ class RingSessionTest {
     }
 
     @Test
-    fun aButtonCollectionAfterAnOpenGroupDropsThatGroupRatherThanContinuingIt() = runTest {
+    fun anOpenGroupTheRingNeverContinuesIsRejectedAndTheRecordingsAfterItAreKept() = runTest {
+        // The collection at index 1 belongs to a different recording (its own start index), so the group left open at
+        // index 0 is incomplete — rejected by the assembly on that evidence, not because a button report arrived.
+        // What follows is kept, including the recording whose collection carries the report.
         ringHolds(0 to ringPart(0, final = false), 1 to ringButton(1, final = true, count = 1), 2 to ringPart(3, true))
 
         session().run(idle)
 
-        assertEquals(listOf(2), sink.firstIndexes, "the group the tap interrupted cannot be a recording")
+        assertEquals(listOf(1, 2), sink.firstIndexes, "the button's own collection and the note after it are both kept")
         assertEquals(3, store.next)
     }
 

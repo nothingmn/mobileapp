@@ -291,6 +291,16 @@ wait its key would never be sent. A hold rides the same window rather than
 dispatching on arrival — the ring is still writing the note's collections
 while the button is down, and the gesture ends when it comes up.
 
+The report never withholds a collection. The ring attaches it to collections
+that carry audio, not only to a tap, and `held` is false on the part where the
+button came up — which is the part that closes the note. So every collection
+goes into the assembly whatever its report says, and the report only feeds the
+gesture. A tap therefore costs one collection read and one one-millisecond
+recording, which the Notebook's own floor drops (`MIN_RECORDING_MILLIS`) as it
+did before the media remote existed; excluding the collection here instead
+cost a whole hold-to-record its last part and cleared the parts already read,
+so a recording never reached the Notebook at all.
+
 ## Firebase
 
 The Firebase SDKs are gone via the same idea at a different seam: the

@@ -81,13 +81,16 @@ private const val MAX_SAMPLES_PER_MILLI = 16
  * exchange or an answer the parser refuses) and the store's or the sink's own exceptions end the session by
  * throwing, after which the caller closes the link.
  *
- * A collection carrying the ring's own button report ([RingCollection.button]) is the button being read, not a
- * note: a tap's collection is handed to [buttons] and kept out of the assembly, so it never becomes a recording and
- * the sink never sees a one-millisecond recording to drop. A collection whose report says the button is held keeps
- * its audio, because a hold is still the note it always was. [buttons] dispatches nothing when a report arrives — it
- * waits for the ring to stop reporting the gesture — so this session is its clock twice over: [buttons.quiet] while
- * the ring is still recording, and [settleTheButton] before it returns, which is the call that sends the key of the
- * last gesture when the tap that started the sync is all there was.
+ * Every collection read goes into the assembly — a collection carrying the ring's own button report
+ * ([RingCollection.button]) is no exception. The report rides along on collections that also carry audio: it is
+ * attached to every collection of a hold-to-record, `held` is false on the part where the button came up, and that
+ * part is what closes the note. So the report is fed to [buttons], which maps the gesture to a media key, and the
+ * audio is assembled and handed to [sink] like any other recording; a tap's few samples become a one-millisecond
+ * recording the sink drops for its length, which is the Notebook's own floor and the behaviour before the media
+ * remote existed. [buttons] dispatches nothing when a report arrives — it waits for the ring to stop reporting the
+ * gesture — so this session is its clock twice over: [buttons.quiet] while the ring is still recording, and
+ * [settleTheButton] before it returns, which is the call that sends the key of the last gesture when the tap that
+ * started the sync is all there was.
  */
 class RingSession(
     private val connection: RingConnection,
@@ -143,23 +146,12 @@ class RingSession(
                     continue
                 }
                 dropping = null
-                val button = collection.button
-                if (button != null) {
-                    buttons.collection(button, collection.startIndex, collection.final, buttonClock())
-                    if (!button.held) {
-                        // A tap's collection is the ring's own report of its button, not a note. Keeping it out of
-                        // the assembly is what stops a one-millisecond "recording" and the sink's `dropped: 1 ms`
-                        // line: the collection never reaches the Notebook at all. A group the ring left open can
-                        // no longer be continued once this collection is not part of it, which is exactly what the
-                        // assembly would say, so it is dropped here and named in the log.
-                        if (open.isNotEmpty()) {
-                            log.w { "dropped collections ${open.map { it.first }}: a button report came before their last part" }
-                            open = emptyList()
-                        }
-                        store.setNextIndex(next)
-                        continue
-                    }
-                }
+                // The ring's button report rides along on collections that also carry audio — it is attached to
+                // every collection of a hold, and `held` is false on the part where the button came up, which is the
+                // part that closes the note. So the report is only the button's clock here: the audio goes on to the
+                // assembly like any other collection, and a tap's few samples become a recording the sink drops for
+                // its length (NotebookRingSink's floor, MIN_RECORDING_MILLIS). Nothing is withheld on a report.
+                collection.button?.let { buttons.collection(it, collection.startIndex, collection.final, buttonClock()) }
                 val read = open + (index to collection)
                 val assembly = assembleRingRecordings(read, maxRecordingMillis)
                 for ((indexes, reason) in assembly.rejected) log.w { "dropped collections $indexes: $reason" }

@@ -146,6 +146,22 @@ class MemoryStore(var next: Int? = null, var count: Int? = null) : RingSyncStore
     }
 }
 
+/**
+ * Records every recording the session hands over in [handed] and keeps only those at least [floorMillis] long,
+ * the way the Notebook's own sink drops a tap for its length (`NotebookRingSink`, `MIN_RECORDING_MILLIS`). It
+ * answers true either way, since a dropped tap is not an error: the collection has been dealt with.
+ */
+class FloorSink(private val floorMillis: Long) : RingRecordingSink {
+    val handed = mutableListOf<Int>()
+    val stored = mutableListOf<RingRecording>()
+
+    override suspend fun store(recording: RingRecording, firstIndex: Int): Boolean {
+        handed += firstIndex
+        if (recording.durationMillis >= floorMillis) stored += recording
+        return true
+    }
+}
+
 class RecordingSink(var accept: Boolean = true) : RingRecordingSink {
     val stored = mutableListOf<RingRecording>()
     val firstIndexes = mutableListOf<Int>()
