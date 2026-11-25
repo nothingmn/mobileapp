@@ -23,11 +23,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -43,19 +47,28 @@ private const val NOTIFICATION_BUFFER = 256
 
 private val log = Logger.withTag("RingLink")
 
-/** The link to the ring failed. [status] is the status Android reported, when it reported one. */
-class RingLinkException(
-    val status: Int?,
-    cause: Throwable?,
-    val failure: RingLinkFailure = ringLinkFailure(status),
-) : Exception("ring link failed: $failure, status $status", cause)
-
 /**
  * Connects to the bonded ring [device], runs [block] over the connection (see [runRingLink]), then disconnects
  * and closes the link. A device that is not bonded is refused before connecting, as needing pairing again.
  */
-suspend fun <T> withRingConnection(device: BluetoothDevice, block: suspend (RingConnection) -> T): T {
-    // Kable's Data level logs I/O bytes (Kable 0.43.1, Logging.Level.Data), which here are recorded audio.
+suspend fun <T> withRingConnection(device: BluetoothDevice, block: suspend (RingConnection) -> T): T = coroutineScope {
+    val link = openRingLink(device, this)
+    overLink(link) { block(it) }
+}
+
+/**
+ * Connects to the bonded ring [device] and leaves the link up until [close] — the warm path, for
+ * [RingLinkKeeper]. [scope] owns the subscriptions and the watch on the link, so it must outlive the press that
+ * opened it; the keeper's own scope is the one that does.
+ *
+ * The returned link is usable when this returns: connected, service discovery done, both channels subscribed. That
+ * is also what the press timings call "connected" — the moment a session could send its first request.
+ */
+suspend fun openRingLink(
+    device: BluetoothDevice,
+    scope: CoroutineScope,
+    subscribeTimeout: Duration = 10.seconds,
+): RingHeldConnection {
     val peripheral = Peripheral(device) { logging { level = Logging.Level.Warnings } }
     try {
         val (control, data, system) = linkStep(peripheral) {
@@ -69,16 +82,13 @@ suspend fun <T> withRingConnection(device: BluetoothDevice, block: suspend (Ring
                 found.firstOrNull { it.characteristicUuid == uuid } ?: throw RingProtocolException("the ring has no characteristic $uuid")
             }
         }
-        return runRingLink(peripheral, control, data, system, block)
-    } finally {
+        return attach(peripheral, control, data, system, scope, subscribeTimeout)
+    } catch (e: Throwable) {
         withContext(NonCancellable) {
-            try {
-                peripheral.disconnect()
-            } catch (e: Exception) {
-                log.w(e) { "disconnect failed" }
-            }
+            quietly { peripheral.disconnect() }
+            peripheral.close()
         }
-        peripheral.close()
+        throw e
     }
 }
 
@@ -96,59 +106,138 @@ internal suspend fun <T> runRingLink(
     block: suspend (RingConnection) -> T,
     subscribeTimeout: Duration = 10.seconds,
 ): T = coroutineScope {
-    val notifications = Channel<RingNotification>(NOTIFICATION_BUFFER)
-    // An observation stays open across a lost link (Kable 0.43.1, Peripheral.observe), so the state is watched.
-    val watcher = launch {
-        val gone = peripheral.state.first { it is State.Disconnected } as State.Disconnected
-        val failure = RingLinkException((gone.status as? State.Disconnected.Status.Unknown)?.status, null)
-        notifications.close(failure)
-        throw failure
+    val link = attach(peripheral, control, data, system, this, subscribeTimeout)
+    overLink(link) { block(it) }
+}
+
+/** [block] over [link], with the link's loss ending the block at once, and the link closed either way. */
+private suspend fun <T> overLink(link: RingHeldConnection, block: suspend (RingConnection) -> T): T = try {
+    coroutineScope {
+        val lost = launch { throw checkNotNull(link.ended.first { it != null }) }
+        try {
+            block(link)
+        } finally {
+            lost.cancel()
+        }
     }
-    val controlJob = subscribe(peripheral, control, notifications, RingNotification::Control, subscribeTimeout)
-    val dataJob = subscribe(peripheral, data, notifications, RingNotification::Data, subscribeTimeout)
+} finally {
+    withContext(NonCancellable) { quietly { link.close() } }
+}
+
+/** Watches, subscribes and returns [peripheral]'s link on [scope]; a link lost while subscribing throws here. */
+private suspend fun attach(
+    peripheral: Peripheral,
+    control: Characteristic,
+    data: Characteristic,
+    system: Characteristic,
+    scope: CoroutineScope,
+    subscribeTimeout: Duration,
+): RingHeldConnection = coroutineScope {
+    val link = KableHeldLink(peripheral, control, data, system, scope, subscribeTimeout)
+    link.startWatching()
     try {
-        block(KableRingConnection(peripheral, control, data, notifications))
-    } finally {
-        watcher.cancel()
-        withContext(NonCancellable) { hangUp(peripheral, system) }
-        controlJob.cancel()
-        dataJob.cancel()
+        coroutineScope {
+            val lost = launch { throw link.lossWhenEnded() }
+            try {
+                link.subscribe(control, RingNotification::Control)
+                link.subscribe(data, RingNotification::Data)
+            } finally {
+                lost.cancel()
+            }
+        }
+        link
+    } catch (e: Throwable) {
+        withContext(NonCancellable) { quietly { link.close() } }
+        throw e
     }
 }
 
-private class KableRingConnection(
+/**
+ * One connection to the ring, kept open until [close]. Its subscriptions and its watch live on [scope]; a link that
+ * goes down without being asked reports itself through [ended], which is what tells [RingLinkKeeper] that the warm
+ * window is over.
+ */
+private class KableHeldLink(
     private val peripheral: Peripheral,
     private val control: Characteristic,
     private val data: Characteristic,
-    override val notifications: ReceiveChannel<RingNotification>,
-) : RingConnection {
+    private val system: Characteristic,
+    private val scope: CoroutineScope,
+    private val subscribeTimeout: Duration,
+) : RingHeldConnection {
+    override val notifications = Channel<RingNotification>(NOTIFICATION_BUFFER)
+
+    private val _ended = MutableStateFlow<RingLinkException?>(null)
+    override val ended: StateFlow<RingLinkException?> = _ended.asStateFlow()
+
+    private val _subscriptions = mutableListOf<Job>()
+    private val closing = Mutex()
+
+    @Volatile
+    private var closed = false
+
+    fun startWatching() {
+        scope.launch {
+            // An observation stays open across a lost link (Kable 0.43.1, Peripheral.observe), so the state is watched.
+            val gone = peripheral.state.first { it is State.Disconnected } as State.Disconnected
+            if (closed) return@launch
+            val failure = RingLinkException((gone.status as? State.Disconnected.Status.Unknown)?.status, null)
+            _ended.value = failure
+            notifications.close(failure)
+        }
+    }
+
+    /** Subscribes [characteristic] onto [notifications], and throws when the ring has not confirmed in time. */
+    suspend fun subscribe(characteristic: Characteristic, wrap: (ByteArray) -> RingNotification) {
+        val subscribed = CompletableDeferred<Unit>()
+        val job = scope.launch {
+            linkStep(peripheral) {
+                peripheral.observe(characteristic) { subscribed.complete(Unit) }.collect { bytes ->
+                    if (notifications.trySend(wrap(bytes)).isFailure) {
+                        notifications.close(RingProtocolException("more notifications than the session read"))
+                    }
+                }
+            }
+        }
+        if (withTimeoutOrNull(subscribeTimeout) { subscribed.await() } == null) {
+            job.cancel()
+            throw RingLinkException(null, null)
+        }
+        _subscriptions += job
+    }
+
     override suspend fun writeControl(bytes: ByteArray) =
         linkStep(peripheral) { peripheral.write(control, bytes, WriteType.WithoutResponse) }
 
     override suspend fun writeData(bytes: ByteArray) =
         linkStep(peripheral) { peripheral.write(data, bytes, WriteType.WithoutResponse) }
-}
 
-private suspend fun CoroutineScope.subscribe(
-    peripheral: Peripheral,
-    characteristic: Characteristic,
-    sink: Channel<RingNotification>,
-    wrap: (ByteArray) -> RingNotification,
-    timeout: Duration,
-): Job {
-    val subscribed = CompletableDeferred<Unit>()
-    val job = launch {
-        linkStep(peripheral) {
-            peripheral.observe(characteristic) { subscribed.complete(Unit) }.collect { bytes ->
-                if (sink.trySend(wrap(bytes)).isFailure) sink.close(RingProtocolException("more notifications than the session read"))
+    override fun drain(): Int {
+        var dropped = 0
+        while (notifications.tryReceive().isSuccess) dropped++
+        return dropped
+    }
+
+    /** The exception the link went down with, once it has; for the watch that ends a session or a subscription. */
+    suspend fun lossWhenEnded(): RingLinkException = checkNotNull(ended.first { it != null })
+
+    override suspend fun close() {
+        withContext(NonCancellable) {
+            closing.withLock {
+                if (closed) return@withLock
+                closed = true
+                quietly { hangUp(peripheral, system) }
+                _subscriptions.forEach { it.cancel() }
+                _subscriptions.clear()
+                try {
+                    peripheral.disconnect()
+                } catch (e: Exception) {
+                    log.w(e) { "disconnect failed" }
+                }
+                peripheral.close()
             }
         }
     }
-    if (withTimeoutOrNull(timeout) { subscribed.await() } == null) {
-        job.cancel()
-        throw RingLinkException(null, null)
-    }
-    return job
 }
 
 /** When the hang-up signal cannot be sent, the caller's disconnect follows a short wait. */
@@ -165,6 +254,16 @@ private suspend fun hangUp(peripheral: Peripheral, system: Characteristic) {
         if (e is CancellationException) throw e
         log.w(e) { "hang-up signal failed" }
         delay(200.milliseconds)
+    }
+}
+
+private suspend fun quietly(block: suspend () -> Unit) {
+    try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        log.w(e) { "a link step failed while closing" }
     }
 }
 
