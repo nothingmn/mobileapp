@@ -65,11 +65,14 @@ const val MAX_RING_TRIES = 5
  * changes; the presses themselves are read out of the collections a sync imports (see [RingSession]), so a press
  * starts a sync even inside the hold the last one left, and the button is followed whether or not the Notebook would
  * take a recording.
+ *
+ * [sync] is given the moment the advertisement that started it was heard, which is what the press timings measure
+ * from; the runner does not use it for anything else.
  */
 class RingSyncRunner(
     private val paired: StateFlow<String?>,
     private val hear: (address: String) -> Flow<RingAdvertisement>,
-    private val sync: suspend (address: String, advertisement: RingAdvertisement) -> RingSessionEnd,
+    private val sync: suspend (address: String, advertisement: RingAdvertisement, heardAtMillis: Long) -> RingSessionEnd,
     private val lastCount: suspend (address: String) -> Int?,
     private val positionReadable: suspend (address: String) -> Boolean,
     private val waitReason: suspend () -> RingWait?,
@@ -153,9 +156,10 @@ class RingSyncRunner(
             _state.value = RingSyncState.PositionLost
         }
         var count = checked("reading the last count of $address") { lastCount(address) }.getOrNull()
-        val latest = Channel<RingAdvertisement>(Channel.CONFLATED)
+        val latest = Channel<HeardAd>(Channel.CONFLATED)
         launch { search(address, latest) }
-        for (advertisement in latest) {
+        for (heard in latest) {
+            val advertisement = heard.advertisement
             // A press is only visible once connected — it is inside the collections, not the advertisement — so a
             // press may start a sync inside the hold a previous one left, and past a Notebook that would refuse a
             // recording. Nothing is stored for it: the collection is the button, and the session drops it.
@@ -169,14 +173,14 @@ class RingSyncRunner(
                 attempts.waited()
                 continue
             }
-            syncOnce(address, advertisement)
+            syncOnce(address, advertisement, heard.atMillis)
             count = checked("reading the last count of $address") { lastCount(address) }.getOrDefault(count)
             // Heard while the session ran, so it says nothing the session did not read.
             latest.tryReceive()
         }
     }
 
-    private suspend fun search(address: String, latest: SendChannel<RingAdvertisement>): Unit = coroutineScope {
+    private suspend fun search(address: String, latest: SendChannel<HeardAd>): Unit = coroutineScope {
         var failedSearches = 0
         while (true) {
             var heard = false
@@ -189,8 +193,9 @@ class RingSyncRunner(
                 hear(address).collect {
                     heard = true
                     _searchFailed.value = false
-                    _lastHeard.value = clock()
-                    latest.send(it)
+                    val at = clock()
+                    _lastHeard.value = at
+                    latest.send(HeardAd(at, it))
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -205,14 +210,18 @@ class RingSyncRunner(
         }
     }
 
-    private suspend fun syncOnce(address: String, advertisement: RingAdvertisement) {
+    private suspend fun syncOnce(
+        address: String,
+        advertisement: RingAdvertisement,
+        heardAtMillis: Long,
+    ) {
         _state.value = RingSyncState.Syncing
         val before = imported()
         var tries = 0
         while (true) {
             tries++
             val outcome = try {
-                ended(withTimeout(sessionLimit) { sync(address, advertisement) }, before)
+                ended(withTimeout(sessionLimit) { sync(address, advertisement, heardAtMillis) }, before)
             } catch (e: TimeoutCancellationException) {
                 logger.w { "sync with $address passed $sessionLimit" }
                 if (imported() > before) RingSyncState.Synced(clock(), imported() - before).also { attempts.continued() } else failed()
@@ -286,6 +295,9 @@ class RingSyncRunner(
         val SEARCH_SETTLED = 10.seconds
     }
 }
+
+/** One advertisement the search heard, with the moment it heard it: the press timings measure from [atMillis]. */
+private data class HeardAd(val atMillis: Long, val advertisement: RingAdvertisement)
 
 /**
  * When the runner may try again: [syncHold] after a sync; after a failure, a doubling delay from 30 s up to 15 min; after

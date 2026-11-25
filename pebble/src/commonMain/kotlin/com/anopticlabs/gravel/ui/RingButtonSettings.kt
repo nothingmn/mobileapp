@@ -30,6 +30,15 @@ interface RingButtonSettings {
     /** Sends [tap] to [action]; the recording gestures are not remappable and have no setter. */
     fun setAction(tap: RingButtonTap, action: RingButtonActionChoice)
 
+    /**
+     * Keeps the ring's link open after a press, for [RingButtonFacts.warmWindow] of quiet, so the next tap does not
+     * pay for a connect. Off unless the user asks: the ring's battery pays for the held link.
+     */
+    fun setWarmLink(warm: Boolean)
+
+    /** How long the link is held once nothing else happens: twenty seconds or thirty, twenty by default. */
+    fun setWarmWindow(window: RingButtonWarmWindow)
+
     /** The page itself; the top bar and the layout are the app's own. */
     @Composable
     fun Screen(topBarParams: TopBarParams)
@@ -57,12 +66,29 @@ enum class RingButtonActionChoice(val labelKey: String) {
     NOTHING("ring_button_action_nothing"),
 }
 
-/** Everything the page shows, in plain values: the switch and the three taps' destinations. */
+/**
+ * How long the ring's link is kept open after a press, when the user has asked for that: the two windows the page
+ * offers, and nothing else. A window is paid for with the ring's battery, so the page does not offer a longer one.
+ */
+enum class RingButtonWarmWindow(val seconds: Int, val labelKey: String) {
+    TWENTY(20, "ring_button_warm_window_20"),
+    THIRTY(30, "ring_button_warm_window_30"),
+    ;
+
+    companion object {
+        /** The window [seconds] names, or the shorter one for a value the page does not offer. */
+        fun of(seconds: Int): RingButtonWarmWindow = entries.firstOrNull { it.seconds == seconds } ?: TWENTY
+    }
+}
+
+/** Everything the page shows, in plain values: the switch, the three taps' destinations, and the warm link. */
 data class RingButtonFacts(
     val enabled: Boolean = false,
     val click: RingButtonActionChoice = RingButtonActionChoice.PLAY_PAUSE,
     val doubleClick: RingButtonActionChoice = RingButtonActionChoice.NEXT,
     val tripleClick: RingButtonActionChoice = RingButtonActionChoice.PREVIOUS,
+    val warmLink: Boolean = false,
+    val warmWindow: RingButtonWarmWindow = RingButtonWarmWindow.TWENTY,
 ) {
     fun actionFor(tap: RingButtonTap): RingButtonActionChoice = when (tap) {
         RingButtonTap.CLICK -> click

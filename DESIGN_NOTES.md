@@ -189,14 +189,50 @@ the sync rather than importing the ring again, until the user confirms
 Import again on the ring's Devices entry, which forgets the position so
 the next sync imports everything still on the ring, duplicates included.
 
-The Bluetooth link (`withRingConnection`, androidMain) uses Kable. It
-refuses a device that is not bonded before connecting, finds the three
-characteristics by UUID, subscribes the control channel and then the data
-channel before sending anything, and watches the connection state so a
-lost link ends the session at once with the status Android reported
-(`runRingLink`). It hangs up by subscribing to the system-input channel,
-which the description gives as the ring's disconnect signal, before the
-other subscriptions end.
+The Bluetooth link (`openRingLink` and `withRingConnection`, androidMain, both
+over `KableHeldLink`) uses Kable. It refuses a device that is not bonded before
+connecting, finds the three characteristics by UUID, subscribes the control
+channel and then the data channel before sending anything, and watches the
+connection state so a lost link ends the session at once with the status
+Android reported (`runRingLink`, `RingHeldConnection.ended`). It hangs up by
+subscribing to the system-input channel, which the description gives as the
+ring's disconnect signal, before the other subscriptions end. `withRingConnection`
+closes the link as the block returns; `openRingLink` hands it out already
+connected and subscribed, for the caller that means to keep it (below).
+
+#### A warm link between presses
+
+A press is only visible once connected, so every tap used to cost a GATT
+connect and service discovery before the button record could be read. Settings
+> General > Ring button therefore offers **Keep the ring connected after a
+press**, off by default, with a **20 s or 30 s** window (20 s by default, the
+only two choices the page offers). With it on, a session's end does not close
+the link: `RingLinkKeeper` holds it and starts a timer for the chosen window of
+quiet, each press restarts that timer, and a press arriving inside the window
+reuses the held link instead of connecting — one drain of anything the ring
+sent while idle first, because a session's exchange refuses bytes that arrived
+between its requests. With it off the link closes as each session ends, exactly
+as before the setting existed.
+
+The decision is pure and host-tested: `RingWarmLink` (commonMain) takes the
+clock, the window, the last use and whether a link is held, and answers
+connect, reuse, close-then-connect, close, hold or nothing; `RingLinkKeeper`
+only carries the answer out. The keeper always closes: a session that throws,
+a link the ring dropped (its `ended` reports what Android said), the window
+running out, the setting being turned off, and the background service stopping
+(`PebbleService.onDestroy`) each close the link and log which it was. A connect
+that outlasts 30 s is given up and the press fails the way any other link
+failure does, so no coroutine or socket is left behind.
+
+The cost is the ring's battery: a held link is a connection the ring keeps
+alive between presses, which is why the switch is off by default and the window
+is not offered longer than 30 s. What the app cannot measure is the ring's own
+current draw, and what a host cannot prove is the GATT part — that Kable's
+connect and the ring's disconnect behave as the tests' fake does. Both need a
+phone and a ring: the operator's debug log carries one line per press on the
+`RingButton` tag with the milliseconds from the advertisement to the link being
+up, from there to the button record, and from the record to the key
+(`RingPressMarks.line`), which is what the setting is meant to move.
 
 Whether the link is encrypted is up to Android and the ring.
 `btm_ble_connection_established` (android16-release,

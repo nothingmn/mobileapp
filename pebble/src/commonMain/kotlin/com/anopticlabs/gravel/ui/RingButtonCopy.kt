@@ -18,6 +18,12 @@ import coreapp.pebble.generated.resources.ring_button_section_recording
 import coreapp.pebble.generated.resources.ring_button_source_note
 import coreapp.pebble.generated.resources.ring_button_title
 import coreapp.pebble.generated.resources.ring_button_triple
+import coreapp.pebble.generated.resources.ring_button_section_link
+import coreapp.pebble.generated.resources.ring_button_warm_subtitle
+import coreapp.pebble.generated.resources.ring_button_warm_title
+import coreapp.pebble.generated.resources.ring_button_warm_window_20
+import coreapp.pebble.generated.resources.ring_button_warm_window_30
+import coreapp.pebble.generated.resources.ring_button_warm_window_title
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -43,6 +49,10 @@ object RingButtonKeys {
     const val SECTION_RECORDING = "ring_button_section_recording"
     const val RECORDING_NOTE = "ring_button_recording_note"
     const val SOURCE_NOTE = "ring_button_source_note"
+    const val SECTION_LINK = "ring_button_section_link"
+    const val WARM_TITLE = "ring_button_warm_title"
+    const val WARM_SUBTITLE = "ring_button_warm_subtitle"
+    const val WARM_WINDOW_TITLE = "ring_button_warm_window_title"
 
     /** Every key this page ships, so the resource files and the lookup table can be held to it. */
     val all: Set<String> = setOf(
@@ -62,6 +72,13 @@ object RingButtonKeys {
         SECTION_RECORDING,
         RECORDING_NOTE,
         SOURCE_NOTE,
+        SECTION_LINK,
+        WARM_TITLE,
+        WARM_SUBTITLE,
+        WARM_WINDOW_TITLE,
+        // The two window labels are drawn by the picker through RingButtonWarmWindow.labelKey.
+        RingButtonWarmWindow.TWENTY.labelKey,
+        RingButtonWarmWindow.THIRTY.labelKey,
     )
 }
 
@@ -83,6 +100,12 @@ fun ringButtonResourceFor(key: String): StringResource? = when (key) {
     RingButtonKeys.SECTION_RECORDING -> Res.string.ring_button_section_recording
     RingButtonKeys.RECORDING_NOTE -> Res.string.ring_button_recording_note
     RingButtonKeys.SOURCE_NOTE -> Res.string.ring_button_source_note
+    RingButtonKeys.SECTION_LINK -> Res.string.ring_button_section_link
+    RingButtonKeys.WARM_TITLE -> Res.string.ring_button_warm_title
+    RingButtonKeys.WARM_SUBTITLE -> Res.string.ring_button_warm_subtitle
+    RingButtonKeys.WARM_WINDOW_TITLE -> Res.string.ring_button_warm_window_title
+    RingButtonWarmWindow.TWENTY.labelKey -> Res.string.ring_button_warm_window_20
+    RingButtonWarmWindow.THIRTY.labelKey -> Res.string.ring_button_warm_window_30
     else -> null
 }
 

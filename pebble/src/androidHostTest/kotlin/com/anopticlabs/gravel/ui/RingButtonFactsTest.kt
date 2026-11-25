@@ -45,4 +45,15 @@ class RingButtonFactsTest {
         assertTrue(ringButtonItemShown(paired = true))
         assertFalse(ringButtonItemShown(paired = false), "with no ring there is no button to configure")
     }
+
+    @Test
+    fun theLinkIsNotHeldUntilTheUserAsksAndTheWindowIsTheShorterOne() {
+        val facts = RingButtonFacts()
+
+        assertFalse(facts.warmLink, "a held link costs the ring's battery, so it is never on by default")
+        assertEquals(RingButtonWarmWindow.TWENTY, facts.warmWindow)
+        assertEquals(20, facts.warmWindow.seconds)
+        assertEquals(RingButtonWarmWindow.TWENTY, RingButtonWarmWindow.of(45), "a window the page does not offer is not drawn")
+        assertEquals(RingButtonWarmWindow.THIRTY, RingButtonWarmWindow.of(30))
+    }
 }

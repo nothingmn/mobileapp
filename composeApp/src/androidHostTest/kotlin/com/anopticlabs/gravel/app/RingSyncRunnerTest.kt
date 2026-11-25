@@ -55,7 +55,7 @@ class RingSyncRunnerTest {
                 else -> failSearch?.let { e -> flow<RingAdvertisement> { throw e } } ?: heard.receiveAsFlow()
             }
         },
-        sync = { _, advertisement ->
+        sync = { _, advertisement, _ ->
             synced += advertisement.collectionCount
             outcome().also { if (it == RingSessionEnd.SYNCED) count = advertisement.collectionCount }
         },

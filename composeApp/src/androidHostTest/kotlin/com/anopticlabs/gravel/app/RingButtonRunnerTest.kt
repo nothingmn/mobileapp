@@ -45,7 +45,7 @@ class RingButtonRunnerTest {
     ) = RingSyncRunner(
         paired = paired,
         hear = { heard.receiveAsFlow() },
-        sync = { _, advertisement ->
+        sync = { _, advertisement, _ ->
             synced += advertisement.collectionCount
             RingSessionEnd.SYNCED
         },
@@ -98,7 +98,7 @@ class RingButtonRunnerTest {
         val held = RingSyncRunner(
             paired = paired,
             hear = { heard.receiveAsFlow() },
-            sync = { _, advertisement ->
+            sync = { _, advertisement, _ ->
                 synced += advertisement.collectionCount
                 RingSessionEnd.SYNCED
             },

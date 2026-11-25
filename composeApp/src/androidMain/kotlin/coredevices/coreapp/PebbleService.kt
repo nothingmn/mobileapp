@@ -13,6 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import co.touchlab.kermit.Logger
 import com.anopticlabs.gravel.app.RingSyncRunner
+import com.anopticlabs.gravel.ring.link.RingLinkKeeper
 import coredevices.util.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +35,7 @@ class PebbleService: Service(), KoinComponent {
     }
     private val pebbleBackgroundManager: PebbleBackgroundManager by inject()
     private val ringSyncRunner: RingSyncRunner by inject()
+    private val ringLinkKeeper: RingLinkKeeper by inject()
     private val ringScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private fun handleIntent(intent: Intent) {
@@ -99,6 +101,9 @@ class PebbleService: Service(), KoinComponent {
 
     override fun onDestroy() {
         ringSyncRunner.stop()
+        // Gravel: the ring's warm link is held for a next press that only this service's runner reads; with the
+        // service gone nothing would use it, so it is closed and the ring is left to sleep.
+        ringLinkKeeper.close("the background service stopped")
         pebbleBackgroundManager.onServiceStopped()
         notificationManagerCompat.cancel(1)
         super.onDestroy()

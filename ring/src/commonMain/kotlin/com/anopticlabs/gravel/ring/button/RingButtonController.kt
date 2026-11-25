@@ -71,12 +71,15 @@ class RingButtonController(
     private val mapping: () -> RingButtonMapping,
     private val keys: RingMediaKeys = RingMediaKeys.None,
     private val classifier: RingButtonClassifier = RingButtonClassifier(),
+    private val timing: RingPressTiming = RingPressTiming(),
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private var open = false
     private var count = 0
     private var held = false
     private var firstAt = 0L
     private var lastAt = 0L
+    private var marks: RingPressMarks? = null
 
     /**
      * One collection's button record at [atMillis]. [startIndex] and [final] are logged and decide nothing; the class
@@ -99,6 +102,9 @@ class RingButtonController(
         // happens, so the report that says so may not be the last one written.
         held = held || record.held
         lastAt = atMillis
+        // The press's own clock, as it stands at this record: the last report of a gesture is the one the key follows,
+        // so its marks are the ones the settle line reports.
+        marks = timing.marks(atMillis)
         logger.d {
             "ring button: report ${record.count} press(es), ${if (record.held) "held" else "tapped"}, " +
                 "collection group at $startIndex${if (final) " closed" else " open"}: the gesture stands at " +
@@ -133,6 +139,7 @@ class RingButtonController(
         held = false
         firstAt = 0L
         lastAt = 0L
+        marks = null
     }
 
     /**
@@ -147,6 +154,7 @@ class RingButtonController(
         val isHeld = held
         val began = firstAt
         val ended = lastAt
+        val pressMarks = marks
         clear()
         if (presses !in 1..RING_MAX_BURST_PRESSES) {
             logger.w { "ring button: a report of $presses press(es) is not a gesture; nothing sent" }
@@ -170,7 +178,16 @@ class RingButtonController(
             "ring button: $presses press(es)${if (isHeld) " held" else ""} settled on " +
                 "$RING_BUTTON_QUIET_MILLIS ms of quiet: ${events.map { it.gesture }}"
         }
-        events.forEach { dispatch(it, mapping()) }
+        // One line per gesture, on the button's own tag, with the three gaps the page's setting is judged by. Every
+        // number here is the device's: the advertisement's time, the link's, the record's and this one. The mapping is
+        // read once for the whole settle — how many keys this gesture sends and where each goes cannot then read two
+        // different settings.
+        val setting = mapping()
+        pressMarks?.let { marks ->
+            val sends = events.count { it -> setting.consumes(it.gesture) && setting.actionFor(it.gesture) != RingButtonAction.NOTHING }
+            logger.d { "ring button: ${marks.line(clock(), sends)}" }
+        }
+        events.forEach { dispatch(it, setting) }
     }
 
     private fun dispatch(event: RingButtonEvent, mapping: RingButtonMapping) {

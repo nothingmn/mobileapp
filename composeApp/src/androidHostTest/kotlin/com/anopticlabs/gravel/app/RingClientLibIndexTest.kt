@@ -115,7 +115,7 @@ class RingClientLibIndexTest {
     private fun TestScope.runner() = RingSyncRunner(
         paired = file.address,
         hear = { emptyFlow() },
-        sync = { _, _ -> RingSessionEnd.SYNCED },
+        sync = { _, _, _ -> RingSessionEnd.SYNCED },
         lastCount = { null },
         positionReadable = { readable },
         waitReason = { null },

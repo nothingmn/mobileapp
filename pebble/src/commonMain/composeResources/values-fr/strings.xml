@@ -51,4 +51,10 @@
     <string name="ring_button_section_recording">Enregistrement</string>
     <string name="ring_button_recording_note">Maintenez le bouton pour enregistrer une note, ou touchez-le puis maintenez pour commencer l'enregistrement. Les deux restent des enregistrements et ne changent pas ici.</string>
     <string name="ring_button_source_note">Le geste est lu dans le rapport que la bague fait elle-même de son bouton, que l'application récupère lorsqu'elle se synchronise avec la bague : un toucher est donc vu sans que rien ne soit enregistré. La touche suit environ 0,15 seconde après le dernier toucher : c'est cette attente qui distingue un toucher de deux.</string>
+    <string name="ring_button_section_link">Touchers plus rapides</string>
+    <string name="ring_button_warm_title">Garder la bague connectée après un toucher</string>
+    <string name="ring_button_warm_subtitle">Le toucher suivant est plus rapide parce que la bague reste liée pendant la durée ci-dessous. C'est la pile de la bague qui en paie le prix.</string>
+    <string name="ring_button_warm_window_title">Rester connectée pendant</string>
+    <string name="ring_button_warm_window_20">20 secondes</string>
+    <string name="ring_button_warm_window_30">30 secondes</string>
 </resources>
