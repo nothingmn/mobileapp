@@ -21,8 +21,8 @@ import coreapp.pebble.generated.resources.ring_button_triple
 import coreapp.pebble.generated.resources.ring_button_section_link
 import coreapp.pebble.generated.resources.ring_button_warm_subtitle
 import coreapp.pebble.generated.resources.ring_button_warm_title
-import coreapp.pebble.generated.resources.ring_button_warm_window_20
-import coreapp.pebble.generated.resources.ring_button_warm_window_30
+import coreapp.pebble.generated.resources.ring_button_warm_window_10
+import coreapp.pebble.generated.resources.ring_button_warm_window_8
 import coreapp.pebble.generated.resources.ring_button_warm_window_title
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -77,8 +77,8 @@ object RingButtonKeys {
         WARM_SUBTITLE,
         WARM_WINDOW_TITLE,
         // The two window labels are drawn by the picker through RingButtonWarmWindow.labelKey.
-        RingButtonWarmWindow.TWENTY.labelKey,
-        RingButtonWarmWindow.THIRTY.labelKey,
+        RingButtonWarmWindow.EIGHT.labelKey,
+        RingButtonWarmWindow.TEN.labelKey,
     )
 }
 
@@ -104,8 +104,8 @@ fun ringButtonResourceFor(key: String): StringResource? = when (key) {
     RingButtonKeys.WARM_TITLE -> Res.string.ring_button_warm_title
     RingButtonKeys.WARM_SUBTITLE -> Res.string.ring_button_warm_subtitle
     RingButtonKeys.WARM_WINDOW_TITLE -> Res.string.ring_button_warm_window_title
-    RingButtonWarmWindow.TWENTY.labelKey -> Res.string.ring_button_warm_window_20
-    RingButtonWarmWindow.THIRTY.labelKey -> Res.string.ring_button_warm_window_30
+    RingButtonWarmWindow.EIGHT.labelKey -> Res.string.ring_button_warm_window_8
+    RingButtonWarmWindow.TEN.labelKey -> Res.string.ring_button_warm_window_10
     else -> null
 }
 

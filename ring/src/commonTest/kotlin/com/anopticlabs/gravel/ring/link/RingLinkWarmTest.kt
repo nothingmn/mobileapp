@@ -11,14 +11,15 @@ import kotlin.test.assertTrue
  * arithmetic behind them. None of it needs a ring, which is the point of keeping the decision out of the GATT layer —
  * what is left for a phone is the GATT connection itself (see DESIGN_NOTES, "A warm link between presses").
  *
- * Times are plain milliseconds of one clock. A window of 20 s is [RingWarmSettings]'s default; the keeper starts its
- * quiet clock when a press is served and restarts it when the next press arrives.
+ * Times are plain milliseconds of one clock. The longest window the page offers is ten seconds, which is the longest
+ * the ring itself keeps a link (it drops one about ten seconds after a press), so the tests that matter here are the
+ * ones at its edge: a press just inside it reuses the link, and a press one millisecond past it does not.
  */
 class RingLinkWarmTest {
 
-    private val window = RingWarmSettings(enabled = true, windowSeconds = 20)
+    private val window = RingWarmSettings(enabled = true, windowSeconds = 10)
 
-    /** A link held since [lastUseMillis], with the setting on and the default window. */
+    /** A link held since [lastUseMillis], with the setting on and the longest window the page offers. */
     private fun held(lastUseMillis: Long) = RingWarmLink(
         enabled = true,
         windowMillis = window.windowMillis,
@@ -28,17 +29,17 @@ class RingLinkWarmTest {
 
     @Test
     fun aPressInsideTheWindowReusesTheHeldLinkAndRestartsTheClock() {
-        val step = held(1_000).press(15_000)
+        val step = held(1_000).press(5_000)
 
         assertEquals(RingWarmAction.REUSE, step.action)
         assertTrue(step.link.linked)
-        assertEquals(15_000L, step.link.lastUseMillis, "the press restarts the window")
-        assertEquals(35_000L, step.link.quietEndsAtMillis())
+        assertEquals(5_000L, step.link.lastUseMillis, "the press restarts the window")
+        assertEquals(15_000L, step.link.quietEndsAtMillis())
     }
 
     @Test
     fun aWindowThatRunsOutClosesTheLink() {
-        val step = held(1_000).lapsed(21_000)
+        val step = held(1_000).lapsed(11_000)
 
         assertEquals(RingWarmAction.CLOSE, step.action)
         assertFalse(step.link.linked)
@@ -52,20 +53,20 @@ class RingLinkWarmTest {
 
         assertEquals(RingWarmAction.HOLD, step.action)
         assertEquals(1_000L, step.link.lastUseMillis)
-        assertEquals(21_000L, step.link.quietEndsAtMillis(), "the same end, so the timer is set again for it")
+        assertEquals(11_000L, step.link.quietEndsAtMillis(), "the same end, so the timer is set again for it")
     }
 
     @Test
     fun aPressAfterTheWindowHasRunOutReconnects() {
         // The link is still listed as held: the timer that would have closed it has not run yet. One link at a time,
         // so the stale one is closed before the press builds its own.
-        val step = held(1_000).press(21_001)
+        val step = held(1_000).press(11_001)
 
         assertEquals(RingWarmAction.CLOSE_THEN_CONNECT, step.action)
-        assertEquals(21_001L, step.link.lastUseMillis)
+        assertEquals(11_001L, step.link.lastUseMillis)
 
         // And the press it connects for is inside the new window, so the one after that reuses it.
-        assertEquals(RingWarmAction.REUSE, step.link.press(21_001 + window.windowMillis - 1).action)
+        assertEquals(RingWarmAction.REUSE, step.link.press(11_001 + window.windowMillis - 1).action)
     }
 
     @Test
@@ -104,23 +105,37 @@ class RingLinkWarmTest {
 
     @Test
     fun theSessionEndStartsTheWindowAndAPressInsideItRestartsIt() {
-        // A press at 0, its session ending at 8 s: the window is 20 s of quiet from the end, not from the press.
+        // A press at 0, its session ending at 2 s: the window is 10 s of quiet from the end, not from the press.
         val pressed = RingWarmLink(enabled = true, windowMillis = window.windowMillis).press(0)
-        val ended = pressed.link.ended(8_000)
+        val ended = pressed.link.ended(2_000)
 
         assertEquals(RingWarmAction.HOLD, ended.action)
-        assertEquals(28_000L, ended.link.quietEndsAtMillis())
-        assertEquals(RingWarmAction.REUSE, ended.link.press(25_000).action, "still inside the window")
-        assertEquals(RingWarmAction.CLOSE_THEN_CONNECT, ended.link.press(28_001).action, "one millisecond past it")
+        assertEquals(12_000L, ended.link.quietEndsAtMillis())
+        assertEquals(RingWarmAction.REUSE, ended.link.press(11_999).action, "still inside the window")
+        assertEquals(RingWarmAction.CLOSE_THEN_CONNECT, ended.link.press(12_000).action, "the moment it is spent")
     }
 
     @Test
     fun theWindowIsTheOneThePageOffersAndNothingElse() {
-        assertEquals(20_000L, RingWarmSettings(enabled = true).windowMillis, "twenty seconds unless asked otherwise")
-        assertEquals(30_000L, RingWarmSettings(enabled = true, windowSeconds = 30).windowMillis)
-        assertEquals(20_000L, RingWarmSettings(enabled = true, windowSeconds = 45).windowMillis, "a window the page does not offer reads as the default")
-        assertEquals(20_000L, RING_WARM_DEFAULT_SECONDS * 1_000L)
-        assertEquals(listOf(20, 30), RING_WARM_WINDOWS_SECONDS)
+        assertEquals(8_000L, RingWarmSettings(enabled = true).windowMillis, "eight seconds unless asked otherwise")
+        assertEquals(8_000L, RingWarmSettings(enabled = true, windowSeconds = 8).windowMillis)
+        assertEquals(10_000L, RingWarmSettings(enabled = true, windowSeconds = 10).windowMillis)
+        assertEquals(8_000L, RING_WARM_DEFAULT_SECONDS * 1_000L)
+        assertEquals(listOf(8, 10), RING_WARM_WINDOWS_SECONDS)
+        assertTrue(RING_WARM_WINDOWS_SECONDS.all { it * 1_000L <= 10_000L }, "no window outlasts the ring's own ten seconds")
         assertEquals(window.windowMillis, RingWarmLink().withSettings(window).windowMillis, "the settings are read on every event")
+    }
+
+    @Test
+    fun aStoredTwentyOrThirtyReadsAsTheLongestWindowTheRingKeeps() {
+        // What this setting wrote before the ring was measured dropping the link itself. The user asked for the
+        // longest hold they were offered; ten seconds is the longest hold there is, so that is what they get.
+        assertEquals(10_000L, RingWarmSettings(enabled = true, windowSeconds = 20).windowMillis)
+        assertEquals(10_000L, RingWarmSettings(enabled = true, windowSeconds = 30).windowMillis)
+        assertEquals(10_000L, RingWarmSettings(enabled = true, windowSeconds = 3_600).windowMillis)
+
+        // Below the shortest window the page offers: eight, the nearest one above it.
+        assertEquals(8_000L, RingWarmSettings(enabled = true, windowSeconds = 0).windowMillis)
+        assertEquals(8_000L, RingWarmSettings(enabled = true, windowSeconds = 5).windowMillis)
     }
 }

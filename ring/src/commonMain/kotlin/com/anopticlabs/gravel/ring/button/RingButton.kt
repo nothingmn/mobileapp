@@ -1,7 +1,6 @@
 package com.anopticlabs.gravel.ring.button
 
 import com.anopticlabs.gravel.ring.link.RING_WARM_DEFAULT_SECONDS
-import com.anopticlabs.gravel.ring.link.RING_WARM_WINDOWS_SECONDS
 import com.anopticlabs.gravel.ring.link.RingWarmSettings
 
 /**
@@ -102,6 +101,12 @@ data class RingButtonMapping(
          *
          * A file written before the warm-link setting existed holds four numbers and still reads: the switch and the
          * three destinations, with the link kept warm off and the default window, which is what those versions did.
+         *
+         * A window that is not one the page offers is kept as it was written rather than throwing the whole file
+         * away: twenty or thirty seconds is what this setting offered before the ring was measured dropping the link
+         * itself, and [RingWarmSettings.windowMillis] reads it as the longest window the ring honours (ten), so a
+         * user who chose the longest hold keeps the longest hold instead of losing the switch and the three
+         * destinations with it.
          */
         fun decode(text: String?): RingButtonMapping {
             val parts = text?.split(',')?.map { it.trim().toIntOrNull() } ?: return RingButtonMapping()
@@ -111,7 +116,7 @@ data class RingButtonMapping(
             val warm = parts.getOrNull(4)
             val window = parts.getOrNull(5)
             if (warm != null && warm !in 0..1) return RingButtonMapping()
-            if (window != null && window !in RING_WARM_WINDOWS_SECONDS) return RingButtonMapping()
+            if (window != null && window <= 0) return RingButtonMapping()
             return RingButtonMapping(
                 enabled = parts[0] == 1,
                 click = actions[parts[1]!!],

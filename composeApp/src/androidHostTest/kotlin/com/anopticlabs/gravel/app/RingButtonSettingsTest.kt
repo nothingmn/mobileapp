@@ -47,11 +47,11 @@ class RingButtonSettingsTest {
         val dir = tempDir()
         try {
             val file = RingButtonFile(dir)
-            val mapping = RingButtonMapping(enabled = true, warmLink = true, warmWindowSeconds = 30)
+            val mapping = RingButtonMapping(enabled = true, warmLink = true, warmWindowSeconds = 10)
             assertTrue(file.save(mapping))
 
             assertEquals(mapping, RingButtonFile(dir).read())
-            assertEquals(30_000L, RingButtonFile(dir).read().warm.windowMillis)
+            assertEquals(10_000L, RingButtonFile(dir).read().warm.windowMillis)
             assertTrue(RingButtonFile(dir).read().warm.enabled)
         } finally {
             dir.deleteRecursively()
@@ -69,7 +69,38 @@ class RingButtonSettingsTest {
             assertTrue(mapping.enabled)
             assertEquals(RingButtonAction.NEXT, mapping.click)
             assertFalse(mapping.warmLink, "a link was never held for a file that did not know the setting")
-            assertEquals(20, mapping.warmWindowSeconds)
+            assertEquals(8, mapping.warmWindowSeconds, "the shortest window the page offers")
+            assertEquals(8_000L, mapping.warm.windowMillis)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aWindowSavedBeforeTheRingWasMeasuredStillReadsAndKeepsTheRestOfTheSetting() {
+        val dir = tempDir()
+        try {
+            // What this feature wrote while the page offered twenty and thirty seconds: the ring drops a held link
+            // itself after about ten, so neither was a window it could keep.
+            File(dir, "ring_button").writeText("1,1,2,3,1,20")
+            val twenty = RingButtonFile(dir).read()
+
+            assertTrue(twenty.enabled, "the switch the user turned on is not thrown away")
+            assertEquals(RingButtonAction.NEXT, twenty.click)
+            assertTrue(twenty.warmLink)
+            assertEquals(20, twenty.warmWindowSeconds, "the file still says what was written")
+            assertEquals(10_000L, twenty.warm.windowMillis, "and the link is held for the longest window there is")
+
+            File(dir, "ring_button").writeText("1,1,2,3,1,30")
+            val thirty = RingButtonFile(dir).read()
+
+            assertTrue(thirty.warmLink)
+            assertEquals(10_000L, thirty.warm.windowMillis)
+            assertEquals(10, thirty.toFacts().warmWindow.seconds, "the page draws the window nearest the stored one")
+
+            // A window of nothing is not a window: that file is damaged, and reads as the setting off.
+            File(dir, "ring_button").writeText("1,1,2,3,1,0")
+            assertEquals(RingButtonMapping(), RingButtonFile(dir).read())
         } finally {
             dir.deleteRecursively()
         }

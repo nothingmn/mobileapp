@@ -29,6 +29,12 @@ interface RingHeldConnection : RingConnection {
      */
     fun drain(): Int
 
+    /**
+     * When each step of this link's open happened, for the one line a press logs about it (see
+     * [RingConnectMarks.line]). Empty for a link that was not marked, which is what a test's fake is.
+     */
+    val connect: RingConnectMarks get() = RingConnectMarks()
+
     /** Hangs up and closes. Idempotent, and safe from the lost-link path. */
     suspend fun close()
 }

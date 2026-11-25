@@ -17,6 +17,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
@@ -164,6 +165,32 @@ class RingLinkTest {
         }
 
         assertTrue("observe ${FakePeripheral.SYSTEM}" in peripheral.events)
+    }
+
+    @Test
+    fun theTwoChannelsAreSubscribedInOrderAndTheLinkIsMarkedUsableAfterThem() = runTest {
+        val peripheral = peripheral()
+        // Each stamp is a millisecond later, so the marks say which subscription finished first.
+        var now = 1_000L
+        val connects = RingConnectTiming { now++ }
+
+        val link = attach(peripheral, control, data, system, this, 10.seconds, connects)
+        try {
+            val marks = link.connect
+
+            assertEquals(1_000L, marks.controlSubscribedAtMillis, "the control channel is the first subscribed")
+            assertEquals(1_001L, marks.dataSubscribedAtMillis, "the data channel is the second")
+            assertEquals(1_002L, marks.connectedAtMillis, "and the link is usable once both are")
+            assertNull(marks.gattConnectedAtMillis, "this fake was connected before the link was opened over it")
+            assertNull(marks.discoveredAtMillis)
+            assertEquals(
+                "connect timings: advertisement time unknown, control channel -> data channel 1 ms, " +
+                    "data channel -> connected 1 ms",
+                marks.line(heardAtMillis = null),
+            )
+        } finally {
+            link.close()
+        }
     }
 
     @Test

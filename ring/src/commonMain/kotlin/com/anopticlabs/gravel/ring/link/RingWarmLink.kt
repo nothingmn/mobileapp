@@ -3,16 +3,18 @@ package com.anopticlabs.gravel.ring.link
 /**
  * The windows Settings > General > Ring button offers, in seconds.
  *
- * Why a list of two rather than a slider: the window is paid for by the ring's battery, so a number the user can
- * drag out to a minute is a number that flattens the ring's cell without saying so. Twenty seconds covers a tap
- * followed by a pause and a second tap — the gesture pair that hurts most when the link has to be built twice —
- * and thirty is there for a hand that is slower than that. Both are short enough that the ring is asleep again by
- * the time the phone is back in a pocket.
+ * Why eight and ten, and why nothing longer. Measured on the operator's phone with the window on: the ring drops a
+ * held link by itself about ten seconds after a press ("the ring dropped the held link (ring link failed: OTHER)"),
+ * so a window of twenty or thirty seconds was a promise the hardware cancels: the second tap of a slow pair always
+ * paid for a fresh connect, and the setting said it would not. Eight and ten seconds are windows the ring actually
+ * keeps, and ten is the longest it can be held at all. Why a list of two rather than a slider: the window is paid
+ * for by the ring's battery, so a number the user can drag out to a minute is a number that flattens the ring's cell
+ * without saying so. Both are short enough that the ring is asleep again by the time the phone is back in a pocket.
  */
-val RING_WARM_WINDOWS_SECONDS: List<Int> = listOf(20, 30)
+val RING_WARM_WINDOWS_SECONDS: List<Int> = listOf(8, 10)
 
-/** What a fresh install reads: long enough for a double tap, short enough to forget. */
-const val RING_WARM_DEFAULT_SECONDS: Int = 20
+/** What a fresh install reads: enough for a double tap, inside the window the ring itself keeps. */
+const val RING_WARM_DEFAULT_SECONDS: Int = 8
 
 /**
  * Whether the ring's link stays connected after a press, and for how long it is kept once nothing else happens.
@@ -27,9 +29,22 @@ data class RingWarmSettings(
     val enabled: Boolean = false,
     val windowSeconds: Int = RING_WARM_DEFAULT_SECONDS,
 ) {
-    /** The quiet window in milliseconds; a window the page does not offer reads as the default. */
+    /**
+     * The quiet window in milliseconds, at the nearest window the page offers.
+     *
+     * A stored twenty or thirty — what this setting wrote before the ring was measured dropping the link itself —
+     * reads as ten, the longest window the ring honours, rather than as nothing or as a crash: the user asked for
+     * the longest hold they were offered, and this is the longest hold there is.
+     */
     val windowMillis: Long
-        get() = (windowSeconds.takeIf { it in RING_WARM_WINDOWS_SECONDS } ?: RING_WARM_DEFAULT_SECONDS) * 1000L
+        get() {
+            val seconds = when {
+                windowSeconds in RING_WARM_WINDOWS_SECONDS -> windowSeconds
+                windowSeconds > RING_WARM_WINDOWS_SECONDS.last() -> RING_WARM_WINDOWS_SECONDS.last()
+                else -> RING_WARM_WINDOWS_SECONDS.first()
+            }
+            return seconds * 1000L
+        }
 
     companion object {
         /** No link held between presses: what the app did before this setting existed. */

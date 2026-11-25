@@ -28,7 +28,9 @@ import kotlinx.coroutines.withTimeoutOrNull
  *
  * - **A press.** [withLink] asks [RingWarmLink.press] what to do. Inside the window the held link is handed to
  *   [syncing] as it is, with anything the ring sent while it was idle drained first, and the clock restarts. Outside
- *   it, or with nothing held, a link is opened (bounded by [connectTimeout]) and the session runs on that.
+ *   it, or with nothing held, a link is opened (bounded by [connectTimeout]) and the session runs on that. A link
+ *   this press opened writes one debug line on the `RingButton` tag saying what each step of the open cost
+ *   ([RingConnectMarks.line]); a press that reused a link has no open of its own and writes none.
  * - **A session that ends.** [RingWarmLink.ended] says hold or close: with the setting on the link stays and a timer
  *   is set for the end of the quiet window; with it off the link goes at once, exactly as `withRingConnection` did
  *   before this existed.
@@ -83,15 +85,15 @@ class RingLinkKeeper(
                 // One link at a time: the window that has run out is given up before this press builds its own.
                 release("the warm window had passed before this press")
                 warm = step.link
-                connect(address)
+                connect(address, heardAtMillis)
             }
             RingWarmAction.CONNECT -> {
                 warm = step.link
-                connect(address)
+                connect(address, heardAtMillis)
             }
             RingWarmAction.REUSE -> {
                 warm = step.link
-                reuse(address)
+                reuse(address, heardAtMillis)
             }
             else -> error("a press is never ${step.action}")
         }
@@ -113,8 +115,8 @@ class RingLinkKeeper(
         lock.withLock { release(reason) }
     }
 
-    private suspend fun reuse(address: String): RingHeldConnection {
-        val held = link ?: return connect(address)
+    private suspend fun reuse(address: String, heardAtMillis: Long): RingHeldConnection {
+        val held = link ?: return connect(address, heardAtMillis)
         heldAddress = address
         val dropped = held.drain()
         if (dropped > 0) logger.d { "dropped $dropped notification(s) the ring sent while the link was idle" }
@@ -123,7 +125,7 @@ class RingLinkKeeper(
         return held
     }
 
-    private suspend fun connect(address: String): RingHeldConnection {
+    private suspend fun connect(address: String, heardAtMillis: Long): RingHeldConnection {
         val started = clock()
         val opened = try {
             withTimeoutOrNull(connectTimeout) { open(address) }
@@ -141,6 +143,11 @@ class RingLinkKeeper(
         heldAddress = address
         timing.linkConnected()
         logger.d { "the link to $address was up ${clock() - started} ms after connecting was asked for" }
+        // One line per press on the button's own tag, beside the press timings: which part of the open the wait went
+        // into. 3.2 s between the advertisement and a usable link is either the link itself or what follows it, and
+        // only the marks can say which.
+        val connects = opened.connect
+        if (!connects.isEmpty) presses.d { connects.line(heardAtMillis) }
         watch(opened)
         return opened
     }
@@ -230,5 +237,8 @@ class RingLinkKeeper(
 
     private companion object {
         val logger = Logger.withTag("RingLinkKeeper")
+
+        /** The tag the press's own line is written on — the button's, beside the press timings. */
+        val presses = Logger.withTag("RingButton")
     }
 }

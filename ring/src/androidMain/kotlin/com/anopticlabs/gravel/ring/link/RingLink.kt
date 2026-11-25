@@ -20,6 +20,7 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
@@ -63,11 +64,15 @@ suspend fun <T> withRingConnection(device: BluetoothDevice, block: suspend (Ring
  *
  * The returned link is usable when this returns: connected, service discovery done, both channels subscribed. That
  * is also what the press timings call "connected" — the moment a session could send its first request.
+ *
+ * [connects] is marked as each of those steps finishes, so a press can say which of them the wait was spent in
+ * ([RingConnectMarks.line]).
  */
 suspend fun openRingLink(
     device: BluetoothDevice,
     scope: CoroutineScope,
     subscribeTimeout: Duration = 10.seconds,
+    connects: RingConnectTiming = RingConnectTiming(),
 ): RingHeldConnection {
     val peripheral = Peripheral(device) { logging { level = Logging.Level.Warnings } }
     try {
@@ -75,14 +80,30 @@ suspend fun openRingLink(
             if (device.bondState != BluetoothDevice.BOND_BONDED) {
                 throw RingLinkException(null, null, RingLinkFailure.PAIR_AGAIN)
             }
-            peripheral.connect()
+            // The state is watched rather than read after connect() returns, because connect() does not come back
+            // until the services are there: a mark taken after it would fold discovery into the wait for the link
+            // and the two steps — the one this measurement is for — could not be told apart.
+            coroutineScope {
+                val up = launch(start = CoroutineStart.UNDISPATCHED) {
+                    peripheral.state.first { it is State.Connected }
+                    connects.gattConnected()
+                }
+                try {
+                    peripheral.connect()
+                } finally {
+                    up.cancel()
+                }
+                // A report that lost the race with connect()'s own resumption: the link is certainly up by now.
+                connects.gattConnected()
+            }
             val found = peripheral.services.value.orEmpty().flatMap { it.characteristics }
+            connects.discovered()
             if (found.isEmpty()) throw RingLinkException(null, null)
             listOf(CONTROL, DATA, SYSTEM_INPUT).map { uuid ->
                 found.firstOrNull { it.characteristicUuid == uuid } ?: throw RingProtocolException("the ring has no characteristic $uuid")
             }
         }
-        return attach(peripheral, control, data, system, scope, subscribeTimeout)
+        return attach(peripheral, control, data, system, scope, subscribeTimeout, connects)
     } catch (e: Throwable) {
         withContext(NonCancellable) {
             quietly { peripheral.disconnect() }
@@ -105,8 +126,9 @@ internal suspend fun <T> runRingLink(
     system: Characteristic,
     block: suspend (RingConnection) -> T,
     subscribeTimeout: Duration = 10.seconds,
+    connects: RingConnectTiming = RingConnectTiming(),
 ): T = coroutineScope {
-    val link = attach(peripheral, control, data, system, this, subscribeTimeout)
+    val link = attach(peripheral, control, data, system, this, subscribeTimeout, connects)
     overLink(link) { block(it) }
 }
 
@@ -124,27 +146,36 @@ private suspend fun <T> overLink(link: RingHeldConnection, block: suspend (RingC
     withContext(NonCancellable) { quietly { link.close() } }
 }
 
-/** Watches, subscribes and returns [peripheral]'s link on [scope]; a link lost while subscribing throws here. */
-private suspend fun attach(
+/**
+ * Watches, subscribes and returns [peripheral]'s link on [scope]; a link lost while subscribing throws here.
+ *
+ * Internal rather than private so a host test can open a link over a fake peripheral and prove the marks
+ * [RingConnectTiming] takes as each channel is subscribed ([RingConnectMarks]).
+ */
+internal suspend fun attach(
     peripheral: Peripheral,
     control: Characteristic,
     data: Characteristic,
     system: Characteristic,
     scope: CoroutineScope,
     subscribeTimeout: Duration,
+    connects: RingConnectTiming,
 ): RingHeldConnection = coroutineScope {
-    val link = KableHeldLink(peripheral, control, data, system, scope, subscribeTimeout)
+    val link = KableHeldLink(peripheral, control, data, system, scope, subscribeTimeout, connects)
     link.startWatching()
     try {
         coroutineScope {
             val lost = launch { throw link.lossWhenEnded() }
             try {
                 link.subscribe(control, RingNotification::Control)
+                connects.controlSubscribed()
                 link.subscribe(data, RingNotification::Data)
+                connects.dataSubscribed()
             } finally {
                 lost.cancel()
             }
         }
+        connects.connected()
         link
     } catch (e: Throwable) {
         withContext(NonCancellable) { quietly { link.close() } }
@@ -164,8 +195,11 @@ private class KableHeldLink(
     private val system: Characteristic,
     private val scope: CoroutineScope,
     private val subscribeTimeout: Duration,
+    private val connects: RingConnectTiming,
 ) : RingHeldConnection {
     override val notifications = Channel<RingNotification>(NOTIFICATION_BUFFER)
+
+    override val connect: RingConnectMarks get() = connects.marks()
 
     private val _ended = MutableStateFlow<RingLinkException?>(null)
     override val ended: StateFlow<RingLinkException?> = _ended.asStateFlow()

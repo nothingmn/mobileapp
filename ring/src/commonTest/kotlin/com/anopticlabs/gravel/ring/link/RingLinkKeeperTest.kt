@@ -36,7 +36,7 @@ class RingLinkKeeperTest {
 
     /** The links the keeper opened, in order; each close counted, so a link is proved to be closed exactly once. */
     private val opened = mutableListOf<FakeHeld>()
-    private var settings = RingWarmSettings(enabled = true, windowSeconds = 20)
+    private var settings = RingWarmSettings(enabled = true, windowSeconds = 10)
     private var refusal: Exception? = null
 
     private class FakeHeld : RingHeldConnection {
@@ -95,9 +95,9 @@ class RingLinkKeeperTest {
     fun theWindowLapsesAndTheLinkIsClosedThen() = runTest {
         val keeper = keeper()
         keeper.withLink(address, now) { }
-        advanceTimeBy(19.seconds)
+        advanceTimeBy(9.seconds)
         runCurrent()
-        assertEquals(0, opened.single().closes, "still inside the 20 s window")
+        assertEquals(0, opened.single().closes, "still inside the 10 s window")
         assertTrue(keeper.holding)
 
         advanceTimeBy(1.seconds)
@@ -111,7 +111,7 @@ class RingLinkKeeperTest {
     fun aPressAfterTheWindowReconnects() = runTest {
         val keeper = keeper()
         keeper.withLink(address, now) { }
-        advanceTimeBy(20.seconds)
+        advanceTimeBy(10.seconds)
         runCurrent()
 
         keeper.withLink(address, now) { }
@@ -125,18 +125,18 @@ class RingLinkKeeperTest {
     fun eachPressRestartsTheClock() = runTest {
         val keeper = keeper()
         keeper.withLink(address, now) { }
-        advanceTimeBy(15.seconds)
+        advanceTimeBy(6.seconds)
         runCurrent()
         keeper.withLink(address, now) { }
-        advanceTimeBy(15.seconds)
+        advanceTimeBy(6.seconds)
         runCurrent()
 
         assertEquals(1, opened.size, "the second press moved the window's end")
-        assertEquals(0, opened.single().closes)
+        assertEquals(0, opened.single().closes, "12 s after the first press, but only 6 s after the last")
 
-        advanceTimeBy(5.seconds)
+        advanceTimeBy(4.seconds)
         runCurrent()
-        assertEquals(1, opened.single().closes, "20 s after the last press")
+        assertEquals(1, opened.single().closes, "10 s after the last press")
     }
 
     @Test
