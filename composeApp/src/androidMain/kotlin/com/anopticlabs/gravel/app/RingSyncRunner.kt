@@ -68,6 +68,14 @@ const val MAX_RING_TRIES = 5
  *
  * [sync] is given the moment the advertisement that started it was heard, which is what the press timings measure
  * from; the runner does not use it for anything else.
+ *
+ * [mediaRemote] is whether the ring's button currently controls this phone's media (Settings > Ring button's master
+ * switch). While it is on the scan never stops listening: no rest follows a sync, and a failed search waits one gap
+ * rather than backing off to five minutes. A press is only visible as an advertisement, so a scan with a gap is a
+ * press the app cannot hear — measured on the operator's phone at 1.3, 1.3, 3.8 and 5.8 s from the finger leaving the
+ * ring, with taps that produced no line at all. With the switch off nothing changes: the rest after a sync and the
+ * doubling rescan delay are the schedule this runner has always had, and they are what keeps a ring with nobody
+ * using its button from costing the phone's battery.
  */
 class RingSyncRunner(
     private val paired: StateFlow<String?>,
@@ -80,13 +88,14 @@ class RingSyncRunner(
     private val imported: () -> Int,
     private val startOver: suspend (address: String) -> Unit,
     private val buttons: RingButtonController = RingButtonController({ RingButtonMapping() }),
+    private val mediaRemote: () -> Boolean = { false },
     private val clock: () -> Long = System::currentTimeMillis,
     private val marks: TimeSource = TimeSource.Monotonic,
     private val sessionLimit: Duration = 15.minutes,
     private val safetyInterval: Duration = 6.hours,
     private val rescanDelay: Duration = 3.seconds,
     private val checkTimeout: Duration = 10.seconds,
-    syncHold: Duration = 30.seconds,
+    private val syncHold: Duration = 30.seconds,
 ) {
     private val _state = MutableStateFlow<RingSyncState>(RingSyncState.Stopped)
     val state: StateFlow<RingSyncState> = _state.asStateFlow()
@@ -157,14 +166,35 @@ class RingSyncRunner(
         }
         var count = checked("reading the last count of $address") { lastCount(address) }.getOrNull()
         val latest = Channel<HeardAd>(Channel.CONFLATED)
+        // Written when the duty changes rather than on every advertisement: one line per turn of the switch, which is
+        // what a field log needs to say whether the app was listening when a tap was made.
+        var duty: Boolean? = null
+        fun announceDuty() {
+            val listening = mediaRemote()
+            if (listening == duty) return
+            duty = listening
+            logger.d {
+                if (listening) {
+                    "ring scan: continuous, because the ring's media remote is on — no rest follows a sync and a failed " +
+                        "search waits $rescanDelay, so a press is heard when it is made"
+                } else {
+                    "ring scan: scheduled, because the ring's media remote is off — $syncHold follows a sync and failed " +
+                        "searches wait up to $MAX_RESCAN_DELAY"
+                }
+            }
+        }
+        announceDuty()
         launch { search(address, latest) }
         for (heard in latest) {
+            announceDuty()
             val advertisement = heard.advertisement
             // A press is only visible once connected — it is inside the collections, not the advertisement — so a
             // press may start a sync inside the hold a previous one left, and past a Notebook that would refuse a
-            // recording. Nothing is stored for it: the collection is the button, and the session drops it.
+            // recording. Nothing is stored for it: the collection is the button, and the session drops it. With the
+            // media remote on there is no hold to cross in the first place: the app has to be scanning when the
+            // finger lands.
             val pressed = advertisement.recording
-            if (_positionLost.value || !(pressed || attempts.ready()) || !advertisement.pairable) continue
+            if (_positionLost.value || !(pressed || mediaRemote() || attempts.ready()) || !advertisement.pairable) continue
             val wanted = shouldSyncRing(advertisement, count)
             if (!wanted && !attempts.syncDue()) continue
             val wait = checked("checking the Notebook") { waitReason() }
@@ -206,7 +236,7 @@ class RingSyncRunner(
             }
             failedSearches = if (heard) 0 else failedSearches + 1
             if (!heard) _searchFailed.value = true
-            delay((rescanDelay * (1 shl (failedSearches - 1).coerceIn(0, 7))).coerceAtMost(MAX_RESCAN_DELAY))
+            delay(rescanWait(base = rescanDelay, heard = heard, failedSearches = failedSearches, continuous = mediaRemote()))
         }
     }
 
@@ -257,7 +287,8 @@ class RingSyncRunner(
 
     private fun ended(end: RingSessionEnd, importedBefore: Int): RingSyncState = when (end) {
         RingSessionEnd.SYNCED -> {
-            attempts.synced()
+            // With the media remote on, the rest is not taken: the next advertisement may be the user's next tap.
+            attempts.synced(rest = !mediaRemote())
             RingSyncState.Synced(clock(), imported() - importedBefore)
         }
         RingSessionEnd.NOT_STORED -> {
@@ -291,17 +322,40 @@ class RingSyncRunner(
     private companion object {
         val logger = Logger.withTag("RingSyncRunner")
         val RETRY_DELAY = 1.seconds
-        val MAX_RESCAN_DELAY = 5.minutes
         val SEARCH_SETTLED = 10.seconds
     }
 }
+
+/** The longest a search waits before starting again while it keeps ending without hearing the ring. */
+private val MAX_RESCAN_DELAY = 5.minutes
 
 /** One advertisement the search heard, with the moment it heard it: the press timings measure from [atMillis]. */
 private data class HeardAd(val atMillis: Long, val advertisement: RingAdvertisement)
 
 /**
+ * How long the search waits before starting again: [base] after a search that heard the ring, and doubling up to five
+ * minutes while searches end without hearing it — Android counts scan starts per app, the watch's included
+ * (android16-release, packages/modules/Bluetooth `AppScanStats.isScanningTooFrequently`).
+ *
+ * With [continuous] — the ring's media remote switched on — the gap is [base] whatever happened, so the app is
+ * listening when the finger lands instead of waiting out a window in which the press arrives and is not heard. A
+ * search that ended is still followed by one gap rather than started again at once: a scan that keeps failing must not
+ * spin, and Android's own limit on scan starts would refuse it anyway.
+ */
+internal fun rescanWait(base: Duration, heard: Boolean, failedSearches: Int, continuous: Boolean): Duration = when {
+    continuous -> base
+    heard -> base
+    else -> (base * (1 shl (failedSearches - 1).coerceIn(0, 7))).coerceAtMost(MAX_RESCAN_DELAY)
+}
+
+/**
  * When the runner may try again: [syncHold] after a sync; after a failure, a doubling delay from 30 s up to 15 min; after
  * a wait for the Notebook, a minute. A sync is due on first hearing the ring and [safetyInterval] after the last one.
+ *
+ * [synced] takes the rest as an argument because it is not always wanted: while the ring's media remote is on, the
+ * next advertisement has to be acted on at once, and a rest after a sync is 30 s in which the button's own tap would
+ * arrive and be ignored. A failure's backoff is not conditional: a ring that will not connect must not be retried in
+ * a loop.
  */
 internal class RingAttempts(private val marks: TimeSource, private val safetyInterval: Duration, private val syncHold: Duration) {
     private var lastSynced: TimeMark? = null
@@ -314,11 +368,12 @@ internal class RingAttempts(private val marks: TimeSource, private val safetyInt
     @Synchronized
     fun syncDue(): Boolean = lastSynced?.let { it.elapsedNow() >= safetyInterval } ?: true
 
+    /** A session ended SYNCED; [rest] is false where the schedule would delay the next press. */
     @Synchronized
-    fun synced() {
+    fun synced(rest: Boolean = true) {
         val now = marks.markNow()
         lastSynced = now
-        holdUntil = now + syncHold
+        holdUntil = if (rest) now + syncHold else null
         failures = 0
     }
 

@@ -1,5 +1,7 @@
 package com.anopticlabs.gravel.app
 
+import com.anopticlabs.gravel.ring.button.RingButtonController
+import com.anopticlabs.gravel.ring.button.RingButtonMapping
 import com.anopticlabs.gravel.ring.link.RingLinkException
 import com.anopticlabs.gravel.ring.protocol.RingAdvertisement
 import com.anopticlabs.gravel.ring.sync.RingSessionEnd
@@ -9,6 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
@@ -42,6 +45,7 @@ class RingSyncRunnerTest {
     private var imported = 0
     private var startOver: suspend (String) -> Unit = {}
     private var syncHold = 30.seconds
+    private var remoteOn = false
 
     private fun TestScope.runner() = RingSyncRunner(
         paired = paired,
@@ -68,6 +72,8 @@ class RingSyncRunnerTest {
         lastWait = { lastWait },
         imported = { imported },
         startOver = { startOver(it) },
+        buttons = RingButtonController({ RingButtonMapping(enabled = remoteOn) }),
+        mediaRemote = { remoteOn },
         clock = { testScheduler.currentTime },
         marks = testScheduler.timeSource,
         syncHold = syncHold,
@@ -545,5 +551,68 @@ class RingSyncRunnerTest {
         runCurrent()
         assertFalse(finishing)
         assertEquals(2, searches)
+    }
+
+    @Test
+    fun aPressOneSecondAfterASyncIsHeardWhileTheMediaRemoteIsOn() = runTest {
+        // Measured with the switch on: 1.3, 1.3, 3.8 and 5.8 s from the finger leaving the ring. The rest after a sync
+        // is 30 s of it, so with the button switched to the phone the rest is not taken.
+        remoteOn = true
+        runner()
+        hear(4)
+        advanceTimeBy(1.seconds)
+        hear(5)
+
+        assertEquals(listOf(4, 5), synced, "no rest stands between two presses while the button is the phone's")
+    }
+
+    @Test
+    fun aTapIsReadAtOnceWhileTheMediaRemoteIsOn() = runTest {
+        remoteOn = true
+        runner()
+        hear(1)
+        heard.trySend(ad(1, recording = true))
+        runCurrent()
+
+        assertEquals(listOf(1, 1), synced)
+    }
+
+    @Test
+    fun aFailedSearchStillWaitsOneGapWhileTheMediaRemoteIsOn() = runTest {
+        // Continuous listening is not a spin: a search that failed is followed by a gap, and the gap does not grow.
+        remoteOn = true
+        failSearch = IllegalStateException("scanning too frequently")
+        runner()
+        runCurrent()
+        assertEquals(1, searches)
+
+        repeat(4) {
+            advanceTimeBy(3.seconds)
+            runCurrent()
+        }
+        assertEquals(5, searches, "five failed searches, five gaps of the same three seconds")
+
+        advanceTimeBy(3.seconds - 1.milliseconds)
+        runCurrent()
+        assertEquals(5, searches, "not restarted inside the gap")
+        advanceTimeBy(1.milliseconds)
+        runCurrent()
+        assertEquals(6, searches)
+    }
+
+    @Test
+    fun theRescanGapsAreTheScheduledOnesWhenTheMediaRemoteIsOff() {
+        val scheduled = listOf(3, 6, 12, 24, 48, 96, 192, 300, 300)
+        for ((index, seconds) in scheduled.withIndex()) {
+            val wait = rescanWait(3.seconds, heard = false, failedSearches = index + 1, continuous = false)
+            assertEquals(seconds.seconds, wait, "failed search ${index + 1} in a row")
+        }
+        assertEquals(3.seconds, rescanWait(3.seconds, heard = true, failedSearches = 0, continuous = false))
+
+        // With the media remote on the scan stays on one gap, however long it has been failing.
+        for (failures in 1..9) {
+            assertEquals(3.seconds, rescanWait(3.seconds, heard = false, failedSearches = failures, continuous = true))
+            assertEquals(3.seconds, rescanWait(3.seconds, heard = true, failedSearches = 0, continuous = true))
+        }
     }
 }

@@ -604,6 +604,9 @@ val ringClientModule = module {
             imported = { sink.imported },
             startOver = { address -> positions(address).startOver() },
             buttons = get(),
+            // The button's master switch. While it is on the scan has to be listening when the finger lands, rather
+            // than on the schedule that keeps a ring nobody is using off the phone's radio.
+            mediaRemote = { get<AndroidRingButtonSettings>().mapping.enabled },
             marks = ElapsedRealtime,
         )
     }

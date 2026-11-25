@@ -322,6 +322,25 @@ holds run on `SystemClock.elapsedRealtimeNanos` (`ElapsedRealtime` in
 runner starts, stops syncing until Import again. The ring's Devices entry
 shows where syncing stands in place of upstream's "Ready".
 
+**While the ring's media remote is on, that schedule is suspended.** A press is
+heard only as an advertisement, so a scan with a gap is a press the app cannot
+hear: measured with the switch on, taps landed 1.3, 1.3, 3.8 and 5.8 s after the
+finger left the ring, and some produced no line at all, because the 30 s that
+followed a sync and the rescan delay that doubles to five minutes are both time
+in which the app is not listening. So with the master switch on, a sync is not
+followed by a rest, an advertisement is acted on at once, and a search that ends
+is restarted after three seconds however many have ended without hearing the
+ring (`rescanWait`). The gap is kept rather than removed: a scan that keeps
+failing must not spin, and Android counts scan starts per app. The cost is the
+**phone's** battery — a scan is receive-only and asks nothing of the ring, so
+the ring pays nothing for it — and it is only paid while the user has asked the
+ring's button to work the phone. With the switch off nothing changes: the rest
+and the doubling delay are the schedule this runner has always had. A session
+that fails still backs off as it did, switch on or off, so a ring that will not
+connect is not hammered. The runner writes one line at debug when the duty
+changes, saying which of the two it is on, so a field log shows whether the app
+was listening when a tap was made.
+
 ### The ring's button as a media remote
 
 Off by default: Settings > General > Ring button turns the ring's button
@@ -329,7 +348,9 @@ into play/pause, next and previous, with one destination per tap gesture, in
 English and French. It is the same button that records a note, so a hold and
 a tap-then-hold stay recordings and are not remappable; with the switch off
 the button does exactly what it did before, and a tap still starts no sync
-of its own beyond what the ring already advertised.
+of its own beyond what the ring already advertised. On, it also puts the scan on
+its continuous duty (above): the key cannot follow the finger while the app is
+not listening.
 
 The gesture is not the collection. The ring reports its button in record
 `0x53` inside a collection — two 32-bit words, the button being down and the
