@@ -287,6 +287,29 @@ not spent on shortening it. Were it ever wanted, it would be
 it off, restarting the scan when the switch turns; the cost would be the
 phone's, paid only while the user has handed the button to the phone.
 
+That attribution was wrong, and the request mark is what shows it. Measured at
+372481fc on the same phone with the switch on, two presses split the open in two:
+`advertisement -> connect requested` 3376 ms and 1434 ms, then 211 and 240 ms to
+the GATT link, 1 ms to service discovery, 335 and 351 ms to the control channel,
+61 and 58 ms to the data channel, and 0 ms to the link's first request. The
+connect itself is about 220 ms. The 1.4-3.4 s came after the scan had already
+delivered the advertisement, so it was the app's own hand-off and not the
+platform's window or Android's duty cycle. One call was doing all of it:
+`RingSyncRunner` asked the Notebook whether it would take a recording before every
+connect, including a press's, and discarded the answer for a press
+(`if (!pressed && …)`). The question is `NotebookRingSink.waitReason`: the queue's
+`readQueue`, which `QueueStore` documents as a non-suspending read that blocks on
+file and Keystore I/O under the `queue_meta` lock, plus a listing of the pending
+directory and, on first use, the recording-engine probe and the setup guide's
+read — all of it bounded only by the runner's 10 s check timeout, and all of it on
+the path between the finger and the radio. A press uses none of it: its session
+imports a one-millisecond recording the sink drops for its length, which is what
+the runner's own comment already said when it served a press "past a Notebook that
+would refuse a recording". A press is no longer asked at all, and a scheduled sync
+is asked within 1 s rather than 10 s so that a slow answer cannot park the scan
+that hears the next tap. What is left of a press is the open — about 0.6 s to a
+usable link and 152 ms from the button record to the key.
+
 Whether the link is encrypted is up to Android and the ring.
 `btm_ble_connection_established` (android16-release,
 packages/modules/Bluetooth, `system/stack/btm/btm_ble_sec.cc`) encrypts a

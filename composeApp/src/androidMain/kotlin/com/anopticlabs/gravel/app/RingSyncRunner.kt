@@ -69,6 +69,14 @@ const val MAX_RING_TRIES = 5
  * [sync] is given the moment the advertisement that started it was heard, which is what the press timings measure
  * from; the runner does not use it for anything else.
  *
+ * A press ([RingAdvertisement.recording]) is never asked about the Notebook: that question exists to keep a
+ * *scheduled* sync from connecting while the sink would leave the ring's recordings where they are, and a press is
+ * served whatever the answer is (its session imports a one-millisecond recording the sink drops for its length). It
+ * is asked within [notebookCheckTimeout] rather than [checkTimeout], because the question is the only call that can
+ * suspend between the advertisement and the connect: measured on the operator's phone, 1.4-3.4 s sat between hearing
+ * the ring's advertisement and asking for the link, and it is a wait for the queue's keystore-backed read, which a
+ * press never uses.
+ *
  * [mediaRemote] is whether the ring's button currently controls this phone's media (Settings > Ring button's master
  * switch). While it is on the scan never stops listening: no rest follows a sync, and a failed search waits one gap
  * rather than backing off to five minutes. A press is only visible as an advertisement, so a scan with a gap is a
@@ -95,6 +103,7 @@ class RingSyncRunner(
     private val safetyInterval: Duration = 6.hours,
     private val rescanDelay: Duration = 3.seconds,
     private val checkTimeout: Duration = 10.seconds,
+    private val notebookCheckTimeout: Duration = 1.seconds,
     private val syncHold: Duration = 30.seconds,
 ) {
     private val _state = MutableStateFlow<RingSyncState>(RingSyncState.Stopped)
@@ -197,11 +206,17 @@ class RingSyncRunner(
             if (_positionLost.value || !(pressed || mediaRemote() || attempts.ready()) || !advertisement.pairable) continue
             val wanted = shouldSyncRing(advertisement, count)
             if (!wanted && !attempts.syncDue()) continue
-            val wait = checked("checking the Notebook") { waitReason() }
-            if (!pressed && (wait.isFailure || wait.getOrNull() != null)) {
-                wait.getOrNull()?.takeIf { wanted }?.let { _state.value = RingSyncState.Waiting(it) }
-                attempts.waited()
-                continue
+            // A press is not asked about the Notebook. Its answer is only ever used to hold a scheduled sync back,
+            // and the question is the queue's keystore-backed read: measured on the operator's phone, 1.4-3.4 s of a
+            // press's whole wait sat between the advertisement the scan heard and the connect being asked for, which
+            // is this call and nothing else. A press cannot be refused for a recording the sink drops anyway.
+            if (!pressed) {
+                val wait = checked("checking the Notebook", notebookCheckTimeout) { waitReason() }
+                if (wait.isFailure || wait.getOrNull() != null) {
+                    wait.getOrNull()?.takeIf { wanted }?.let { _state.value = RingSyncState.Waiting(it) }
+                    attempts.waited()
+                    continue
+                }
             }
             syncOnce(address, advertisement, heard.atMillis)
             count = checked("reading the last count of $address") { lastCount(address) }.getOrDefault(count)
@@ -306,11 +321,11 @@ class RingSyncRunner(
         return RingSyncState.Failed(clock())
     }
 
-    /** [check] within [checkTimeout]; a failure or a timeout is logged and returned as a failed result. */
-    private suspend fun <T> checked(what: String, check: suspend () -> T): Result<T> = try {
-        Result.success(withTimeout(checkTimeout) { check() })
+    /** [check] within [timeout]; a failure or a timeout is logged and returned as a failed result. */
+    private suspend fun <T> checked(what: String, timeout: Duration = checkTimeout, check: suspend () -> T): Result<T> = try {
+        Result.success(withTimeout(timeout) { check() })
     } catch (e: TimeoutCancellationException) {
-        logger.w { "$what took longer than $checkTimeout" }
+        logger.w { "$what took longer than $timeout" }
         Result.failure(e)
     } catch (e: CancellationException) {
         throw e

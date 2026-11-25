@@ -19,6 +19,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -47,6 +48,10 @@ class RingSyncRunnerTest {
     private var syncHold = 30.seconds
     private var remoteOn = false
 
+    /** How many times the Notebook was asked before a connect, and when each session was asked for. */
+    private var waitChecks = 0
+    private val requestedAt = mutableListOf<Long>()
+
     private fun TestScope.runner() = RingSyncRunner(
         paired = paired,
         hear = {
@@ -60,6 +65,7 @@ class RingSyncRunnerTest {
             }
         },
         sync = { _, advertisement, _ ->
+            requestedAt += testScheduler.currentTime
             synced += advertisement.collectionCount
             outcome().also { if (it == RingSessionEnd.SYNCED) count = advertisement.collectionCount }
         },
@@ -68,7 +74,10 @@ class RingSyncRunnerTest {
             count
         },
         positionReadable = { readable },
-        waitReason = { waitReason() },
+        waitReason = {
+            waitChecks++
+            waitReason()
+        },
         lastWait = { lastWait },
         imported = { imported },
         startOver = { startOver(it) },
@@ -575,6 +584,61 @@ class RingSyncRunnerTest {
         runCurrent()
 
         assertEquals(listOf(1, 1), synced)
+    }
+
+    @Test
+    fun aPressReachesTheConnectRequestWithoutWaitingForTheNotebook() = runTest {
+        // Measured on the operator's phone: 1.4-3.4 s sat between the advertisement the scan heard and the connect
+        // being asked for, and all of it was the Notebook question a press never uses — the queue's keystore-backed
+        // read, which the QueueStore documents as blocking on Keystore I/O under the queue's lock.
+        waitReason = { delay(2.seconds); null }
+        remoteOn = true
+        runner()
+        val heardAt = testScheduler.currentTime
+        heard.trySend(ad(1, recording = true))
+        runCurrent()
+
+        assertEquals(listOf(1), synced)
+        assertEquals(0, waitChecks, "a press is not asked about the Notebook")
+        assertEquals(heardAt, requestedAt.single(), "the connect was asked for as the press was heard")
+    }
+
+    @Test
+    fun aNotebookQuestionThatHangsCannotHoldAPressPastOneSecond() = runTest {
+        waitReason = { awaitCancellation() }
+        remoteOn = true
+        runner()
+        hear(1)
+        val heardAt = testScheduler.currentTime
+        heard.trySend(ad(1, recording = true))
+        runCurrent()
+        advanceTimeBy(1.seconds)
+        runCurrent()
+
+        assertEquals(listOf(1), synced)
+        assertTrue(
+            requestedAt.single() - heardAt <= 1.seconds.inWholeMilliseconds,
+            "the press waited ${requestedAt.single() - heardAt} ms on a question it does not use",
+        )
+    }
+
+    @Test
+    fun theNotebookQuestionIsBoundedSoAScheduledSyncDoesNotWaitTenSecondsForIt() = runTest {
+        waitReason = { awaitCancellation() }
+        runner()
+        hear(1)
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        assertEquals(0, synced.size, "a question that cannot answer is a wait, not a connect")
+
+        advanceTimeBy(59.seconds)
+        hear(1)
+        assertEquals(0, synced.size, "held for a minute from the bound, not from ten seconds later")
+        advanceTimeBy(1.seconds)
+        waitReason = { null }
+        hear(1)
+
+        assertEquals(listOf(1), synced)
     }
 
     @Test
