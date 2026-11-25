@@ -40,6 +40,10 @@ class RingSyncRunnerTest {
     private var outcome: suspend () -> RingSessionEnd = { RingSessionEnd.SYNCED }
     private var count: Int? = null
     private var countReads = 0
+
+    /** The count read to hang from, and the gate it hangs on: the loop's own work between two presses. */
+    private var hangCountReadFrom = Int.MAX_VALUE
+    private var hangCountRead: CompletableDeferred<Unit>? = null
     private var readable = true
     private var waitReason: suspend () -> RingWait? = { null }
     private var lastWait: RingWait? = null
@@ -71,6 +75,7 @@ class RingSyncRunnerTest {
         },
         lastCount = {
             countReads++
+            if (countReads >= hangCountReadFrom) hangCountRead?.await()
             count
         },
         positionReadable = { readable },
@@ -573,6 +578,31 @@ class RingSyncRunnerTest {
         hear(5)
 
         assertEquals(listOf(4, 5), synced, "no rest stands between two presses while the button is the phone's")
+    }
+
+    @Test
+    fun aPressIsServedWithoutWaitingForTheLoopsOwnWork() = runTest {
+        // Measured on the operator's phone at f85c7e39, with the Notebook question gone: 726 and 1290 ms still sat
+        // between the advertisement the scan heard and the connect being asked for. Nothing in the loop's body
+        // suspends — the wait was for the loop itself, the one coroutine that also runs a session, closes its link
+        // and reads the ring's saved count from its file, and for the dispatcher that had to schedule it. This is
+        // that: the loop is in its count read (a file read, bounded by the 10 s check timeout) when the tap is heard,
+        // and the press must not wait for it.
+        remoteOn = true
+        hangCountRead = CompletableDeferred()
+        hangCountReadFrom = 2
+        runner()
+        hear(1)
+        val pressedAt = testScheduler.currentTime
+
+        heard.trySend(ad(1, recording = true))
+        runCurrent()
+
+        assertEquals(listOf(1, 1), synced, "the press was served while the loop was still reading")
+        assertEquals(pressedAt, requestedAt.last(), "the connect was asked for as the press was heard")
+
+        hangCountRead?.complete(Unit)
+        runCurrent()
     }
 
     @Test

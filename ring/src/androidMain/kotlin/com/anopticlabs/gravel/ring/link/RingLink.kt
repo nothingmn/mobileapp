@@ -288,10 +288,19 @@ private class KableHeldLink(
     }
 }
 
-/** When the hang-up signal cannot be sent, the caller's disconnect follows a short wait. */
+/**
+ * Tells the ring this link is going, and gives it a moment to hang up itself before the caller disconnects.
+ *
+ * Subscribing to the system-input channel is the signal (the description gives it as the ring's disconnect signal);
+ * the wait only gives the ring a turn to act on it. It used to be a second, which was never measured and cost every
+ * press its tail: the link stayed up a full second after the session on any ring that did not answer the signal, and
+ * the next tap's connect started from a ring that had been released later than it needed to be. [HANG_UP] is long
+ * enough for the ring to drop a link it is going to drop, and short enough that a ring which ignores the signal costs
+ * the press almost nothing — the caller's disconnect follows either way.
+ */
 private suspend fun hangUp(peripheral: Peripheral, system: Characteristic) {
     try {
-        withTimeoutOrNull(1.seconds) {
+        withTimeoutOrNull(HANG_UP) {
             coroutineScope {
                 val subscribing = launch { peripheral.observe(system).collect {} }
                 peripheral.state.first { it is State.Disconnected }
@@ -304,6 +313,9 @@ private suspend fun hangUp(peripheral: Peripheral, system: Characteristic) {
         delay(200.milliseconds)
     }
 }
+
+/** How long the ring is given to hang up on the system-input signal before the caller disconnects. */
+private val HANG_UP = 300.milliseconds
 
 private suspend fun quietly(block: suspend () -> Unit) {
     try {

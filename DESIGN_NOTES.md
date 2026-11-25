@@ -310,6 +310,41 @@ is asked within 1 s rather than 10 s so that a slow answer cannot park the scan
 that hears the next tap. What is left of a press is the open — about 0.6 s to a
 usable link and 152 ms from the button record to the key.
 
+**The rest of the hand-off, and the second press's open.** Re-measured at
+f85c7e39 on the same phone with the switch on, two taps 6.6 s apart:
+`advertisement -> connect requested` 1290 and 726 ms, `connect requested ->
+gatt` 205 and 1077 ms, discovery 0 ms, `gatt -> control channel` 355 and
+1242 ms, `data channel` 60 and 35 ms, and 151 ms from the record to the key both
+times. So the Notebook question was half of it, and two things are left.
+
+The first is ours and is now gone. Nothing in the loop's body suspends, so the
+726–1290 ms was never a call in it: a press was marked by the scan, put into a
+conflated channel, and taken by the runner's single loop when that coroutine was
+next scheduled — the same coroutine that runs a session, closes its link
+(`hangUp` waited a full second there when the ring ignored the signal) and reads
+the ring's saved count from its file, bounded only by the 10 s check timeout. A
+press is now served on the coroutine the advertisement arrived on, started
+undispatched, so the connect is asked for before that coroutine yields: the only
+thing that can still hold it back is another link being open, and the ring does
+not advertise while one is. A press heard while a link is open is dropped, as the
+loop's `tryReceive` always dropped one. The hang-up wait is 300 ms now: the
+subscription is the signal, the wait only gives the ring a turn to act on it, and
+a second of it sat in front of every press's *next* tap.
+
+The second is not ours, and it is the finding: the link's own open. Both presses
+asked for the connect within 0.7–1.3 s of the same radio and the same ring, and
+the first press's open was 620 ms from the request to a usable link while the
+second's was 2354 ms. The difference is inside `peripheral.connect()` (205 vs
+1077 ms to the GATT state) and inside the control channel's confirmation (355 vs
+1242 ms), both of which the app only asks kable for; service discovery is 0 ms
+both times, so the app's side of the exchange never moved. The first press
+followed a long idle, the second came 3.7 s after the previous link was closed.
+That reads as the ring (or Android's stack) being slower to accept a link in the
+seconds after it has just served one, and a phone measurement with a longer gap —
+or with the second tap a minute later — is what would confirm it. Nothing in this
+change touches it, and no app-side wait can explain a number that lives between
+the request and the ring's first answer.
+
 Whether the link is encrypted is up to Android and the ring.
 `btm_ble_connection_established` (android16-release,
 packages/modules/Bluetooth, `system/stack/btm/btm_ble_sec.cc`) encrypts a

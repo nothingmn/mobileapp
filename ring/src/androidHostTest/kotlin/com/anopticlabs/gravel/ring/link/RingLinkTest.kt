@@ -49,6 +49,9 @@ class RingLinkTest {
         val streams = mutableMapOf<Uuid, Channel<ByteArray>>()
         var confirm: (Uuid) -> Boolean = { true }
 
+        /** Whether the ring hangs up when the app subscribes to the system-input channel. */
+        var saysGoodbye = true
+
         override val state: StateFlow<State> = stateFlow
         override val identifier: Identifier = "00:11:22:33:44:55"
         override val name: String? = null
@@ -79,7 +82,7 @@ class RingLinkTest {
             events += "observe $uuid"
             try {
                 if (confirm(uuid)) onSubscription()
-                if (uuid == SYSTEM) stateFlow.value = State.Disconnected(State.Disconnected.Status.PeripheralDisconnected)
+                if (uuid == SYSTEM && saysGoodbye) stateFlow.value = State.Disconnected(State.Disconnected.Status.PeripheralDisconnected)
                 emitAll(streams.getOrPut(uuid) { Channel(Channel.UNLIMITED) }.consumeAsFlow())
             } finally {
                 events += "end $uuid"
@@ -200,5 +203,23 @@ class RingLinkTest {
 
         assertFailsWith<RingLinkException> { runRingLink(peripheral, control, data, system, { awaitCancellation() }) }
         assertEquals(10.seconds.inWholeMilliseconds, testScheduler.currentTime)
+    }
+
+    @Test
+    fun aRingThatIgnoresTheHangUpIsReleasedWithinAMoment() = runTest {
+        // The subscription is the signal; the wait after it only gives the ring a turn to act on it. A ring that never
+        // answers must not hold the press's link open: at f85c7e39 this was a full second, spent after every press and
+        // in front of the next tap's connect.
+        val peripheral = peripheral()
+        peripheral.saysGoodbye = false
+        val link = attach(peripheral, control, data, system, this, 10.seconds, RingConnectTiming())
+
+        link.close()
+
+        assertTrue(
+            testScheduler.currentTime <= 300,
+            "closing the link took ${testScheduler.currentTime} ms on a ring that never says goodbye",
+        )
+        assertIs<State.Disconnected>(peripheral.stateFlow.value, "the app disconnects itself once the wait is spent")
     }
 }

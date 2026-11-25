@@ -16,6 +16,7 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
@@ -30,6 +31,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 
 /** Where syncing the paired ring stands, for its Devices entry. */
@@ -72,10 +75,16 @@ const val MAX_RING_TRIES = 5
  * A press ([RingAdvertisement.recording]) is never asked about the Notebook: that question exists to keep a
  * *scheduled* sync from connecting while the sink would leave the ring's recordings where they are, and a press is
  * served whatever the answer is (its session imports a one-millisecond recording the sink drops for its length). It
- * is asked within [notebookCheckTimeout] rather than [checkTimeout], because the question is the only call that can
- * suspend between the advertisement and the connect: measured on the operator's phone, 1.4-3.4 s sat between hearing
- * the ring's advertisement and asking for the link, and it is a wait for the queue's keystore-backed read, which a
- * press never uses.
+ * is asked within [notebookCheckTimeout] rather than [checkTimeout], because it is a wait for the queue's
+ * keystore-backed read, which a press never uses; measured on the operator's phone, 1.4-3.4 s of a press's wait sat
+ * between hearing the ring's advertisement and asking for the link, and that question was all of it.
+ *
+ * A press is served where it is heard (see [servePress]): the search's own coroutine asks for the link, before it
+ * suspends again, rather than handing the advertisement to the loop. The loop is one coroutine that also runs a
+ * session, closes its link and reads the ring's saved count, and at f85c7e39 a press waited for it to be free and
+ * scheduled — measured on the operator's phone at 726 and 1290 ms between the advertisement and the connect being
+ * asked for, with nothing in the loop's body that suspends. A scheduled sync is still the loop's, and one link is
+ * still open at a time.
  *
  * [mediaRemote] is whether the ring's button currently controls this phone's media (Settings > Ring button's master
  * switch). While it is on the scan never stops listening: no rest follows a sync, and a failed search waits one gap
@@ -173,8 +182,12 @@ class RingSyncRunner(
             _positionLost.value = true
             _state.value = RingSyncState.PositionLost
         }
-        var count = checked("reading the last count of $address") { lastCount(address) }.getOrNull()
+        val ended = EndedCount(checked("reading the last count of $address") { lastCount(address) }.getOrNull())
         val latest = Channel<HeardAd>(Channel.CONFLATED)
+        // One link at a time. A press is served on the coroutine that heard it and a scheduled sync on this loop, so
+        // this is what says which of them may open the link; a press that arrives while one is open cannot be served
+        // without a second one, and is dropped as the loop has always dropped a press heard during a session.
+        val link = Mutex()
         // Written when the duty changes rather than on every advertisement: one line per turn of the switch, which is
         // what a field log needs to say whether the app was listening when a tap was made.
         var duty: Boolean? = null
@@ -193,39 +206,59 @@ class RingSyncRunner(
             }
         }
         announceDuty()
-        launch { search(address, latest) }
+        // The search serves a press itself (see servePress) rather than handing it to this loop.
+        launch { search(address, latest, link, ended) }
         for (heard in latest) {
             announceDuty()
             val advertisement = heard.advertisement
-            // A press is only visible once connected — it is inside the collections, not the advertisement — so a
-            // press may start a sync inside the hold a previous one left, and past a Notebook that would refuse a
-            // recording. Nothing is stored for it: the collection is the button, and the session drops it. With the
-            // media remote on there is no hold to cross in the first place: the app has to be scanning when the
-            // finger lands.
-            val pressed = advertisement.recording
-            if (_positionLost.value || !(pressed || mediaRemote() || attempts.ready()) || !advertisement.pairable) continue
-            val wanted = shouldSyncRing(advertisement, count)
+            // Only a scheduled sync reaches this loop: the search serves a press where it is heard (servePress), so
+            // nothing here is on a press's path. What is left is the schedule this loop has always had — the rest
+            // after a sync, the hold after a failure, and the Notebook's answer, which keeps a scheduled sync from
+            // connecting while the sink would leave the ring's recordings where they are.
+            if (_positionLost.value || !(mediaRemote() || attempts.ready()) || !advertisement.pairable) continue
+            val wanted = shouldSyncRing(advertisement, ended.value)
             if (!wanted && !attempts.syncDue()) continue
-            // A press is not asked about the Notebook. Its answer is only ever used to hold a scheduled sync back,
-            // and the question is the queue's keystore-backed read: measured on the operator's phone, 1.4-3.4 s of a
-            // press's whole wait sat between the advertisement the scan heard and the connect being asked for, which
-            // is this call and nothing else. A press cannot be refused for a recording the sink drops anyway.
-            if (!pressed) {
-                val wait = checked("checking the Notebook", notebookCheckTimeout) { waitReason() }
-                if (wait.isFailure || wait.getOrNull() != null) {
-                    wait.getOrNull()?.takeIf { wanted }?.let { _state.value = RingSyncState.Waiting(it) }
-                    attempts.waited()
-                    continue
-                }
+            // The question is asked within [notebookCheckTimeout] rather than [checkTimeout], because it is a wait
+            // for the queue's keystore-backed read and a slow answer must not park a scan that hears the next tap.
+            val wait = checked("checking the Notebook", notebookCheckTimeout) { waitReason() }
+            if (wait.isFailure || wait.getOrNull() != null) {
+                wait.getOrNull()?.takeIf { wanted }?.let { _state.value = RingSyncState.Waiting(it) }
+                attempts.waited()
+                continue
             }
-            syncOnce(address, advertisement, heard.atMillis)
-            count = checked("reading the last count of $address") { lastCount(address) }.getOrDefault(count)
+            link.withLock { syncOnce(address, advertisement, heard.atMillis) }
+            ended.value = checked("reading the last count of $address") { lastCount(address) }.getOrDefault(ended.value)
             // Heard while the session ran, so it says nothing the session did not read.
             latest.tryReceive()
         }
     }
 
-    private suspend fun search(address: String, latest: SendChannel<HeardAd>): Unit = coroutineScope {
+    /**
+     * Serves the press [heard] on the coroutine whose scan heard it, before that coroutine suspends again.
+     *
+     * This is the press's whole hand-off, and it used to be the wait. The scan marked the advertisement, put it in a
+     * conflated channel, and the loop — the one coroutine that also runs sessions, closes the last link and reads the
+     * ring's saved count from its file — took it when it was next scheduled. Nothing in the loop's body suspends, so
+     * a press's measured wait of 726 and 1290 ms was never a call inside it: it was the loop's coroutine itself, the
+     * dispatcher that had to schedule it, and whatever it was finishing first. A press now asks for the connect on
+     * the coroutine the advertisement arrived on, which needs no scheduling to get to the point where the link is
+     * asked for; only the link ([link]) can still hold it back, and only while a link is open, which the ring does
+     * not do while its button is being pressed.
+     */
+    private suspend fun servePress(address: String, heard: HeardAd, ended: EndedCount) {
+        val advertisement = heard.advertisement
+        if (_positionLost.value || !advertisement.pairable) return
+        syncOnce(address, advertisement, heard.atMillis)
+        ended.value = checked("reading the last count of $address") { lastCount(address) }.getOrDefault(ended.value)
+    }
+
+    private suspend fun search(
+        address: String,
+        latest: SendChannel<HeardAd>,
+        link: Mutex,
+        ended: EndedCount,
+    ): Unit = coroutineScope {
+        val scan = this
         var failedSearches = 0
         while (true) {
             var heard = false
@@ -240,7 +273,27 @@ class RingSyncRunner(
                     _searchFailed.value = false
                     val at = clock()
                     _lastHeard.value = at
-                    latest.send(HeardAd(at, it))
+                    val advertisement = HeardAd(at, it)
+                    if (it.recording) {
+                        // A press is served here, on the coroutine that has the advertisement in hand, rather than
+                        // queued to the loop: that hop is the press's pre-connect wait (see servePress). Started
+                        // undispatched, so the connect is asked for before this coroutine yields. A press heard
+                        // while a link is open cannot be served without a second one, and is dropped — which is what
+                        // the loop's tryReceive has always done with one heard during a session.
+                        if (link.tryLock()) {
+                            scan.launch(start = CoroutineStart.UNDISPATCHED) {
+                                try {
+                                    servePress(address, advertisement, ended)
+                                } finally {
+                                    link.unlock()
+                                }
+                            }
+                        } else {
+                            logger.d { "a press was heard while a link was open, so it was dropped: $address" }
+                        }
+                    } else {
+                        latest.send(advertisement)
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -346,6 +399,15 @@ private val MAX_RESCAN_DELAY = 5.minutes
 
 /** One advertisement the search heard, with the moment it heard it: the press timings measure from [atMillis]. */
 private data class HeardAd(val atMillis: Long, val advertisement: RingAdvertisement)
+
+/**
+ * The collection count the last session ended at.
+ *
+ * A holder rather than a local, because two coroutines now end sessions: the loop for a scheduled sync, and the
+ * scan's own coroutine for a press ([RingSyncRunner.servePress]). The write is a whole reference to an `Int?`, so the
+ * field only has to be visible to the reader, not locked.
+ */
+private class EndedCount(@Volatile var value: Int?)
 
 /**
  * How long the search waits before starting again: [base] after a search that heard the ring, and doubling up to five
