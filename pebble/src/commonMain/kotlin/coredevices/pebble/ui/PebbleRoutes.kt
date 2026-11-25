@@ -271,8 +271,6 @@ fun NavGraphBuilder.addNavBarRoutes(
                     facts = facts,
                     onEnabled = ringButton::setEnabled,
                     onAction = ringButton::setAction,
-                    onWarmLink = ringButton::setWarmLink,
-                    onWindow = ringButton::setWarmWindow,
                 )
             }
         }

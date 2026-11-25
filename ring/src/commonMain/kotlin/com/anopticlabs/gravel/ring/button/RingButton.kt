@@ -1,8 +1,5 @@
 package com.anopticlabs.gravel.ring.button
 
-import com.anopticlabs.gravel.ring.link.RING_WARM_DEFAULT_SECONDS
-import com.anopticlabs.gravel.ring.link.RingWarmSettings
-
 /**
  * What the ring's button produced, in the vocabulary upstream's `:experimental` gesture routing uses
  * (`RingGesture`): a single tap, two or three taps, a press held down, or a tap followed by a hold.
@@ -44,26 +41,18 @@ fun interface RingMediaKeys {
 }
 
 /**
- * How the user mapped the ring's button: the master switch, the destination of each media gesture, and whether the
- * link is kept warm between presses. The recording gestures are not here because they cannot be remapped.
+ * How the user mapped the ring's button: the master switch and the destination of each media gesture. The recording
+ * gestures are not here because they cannot be remapped.
  *
  * The switch is **off** by default: a ring's button already records notes, and taking that button over without
  * being asked would change what it does for every owner of the ring who never opens Settings.
- *
- * [warmLink] is off by default too, and [warmWindowSeconds] is only read while it is on: a held link is paid for with
- * the ring's battery, so it is never something the app does to a user who has not asked (see [warm]).
  */
 data class RingButtonMapping(
     val enabled: Boolean = false,
     val click: RingButtonAction = RingButtonAction.PLAY_PAUSE,
     val doubleClick: RingButtonAction = RingButtonAction.NEXT,
     val tripleClick: RingButtonAction = RingButtonAction.PREVIOUS,
-    val warmLink: Boolean = false,
-    val warmWindowSeconds: Int = RING_WARM_DEFAULT_SECONDS,
 ) {
-    /** The keep-the-ring-connected setting the runner and the link keeper read on every press. */
-    val warm: RingWarmSettings get() = RingWarmSettings(enabled = warmLink, windowSeconds = warmWindowSeconds)
-
     /** Where [gesture] goes: a media key for a media gesture with the switch on, nothing otherwise. */
     fun actionFor(gesture: RingButtonGesture): RingButtonAction {
         if (!enabled) return RingButtonAction.NOTHING
@@ -82,48 +71,33 @@ data class RingButtonMapping(
      */
     fun consumes(gesture: RingButtonGesture): Boolean = enabled && !gesture.records && gesture != RingButtonGesture.NONE
 
-    /**
-     * The saved form: the switch, the three ordinals, whether the link is kept warm and for how many seconds, which
-     * [decode] reads back; 48 characters at most, and 24 for the longest value this can write.
-     */
+    /** The saved form: the switch and the three ordinals, which [decode] reads back. */
     fun encode(): String = listOf(
         if (enabled) "1" else "0",
         click.ordinal.toString(),
         doubleClick.ordinal.toString(),
         tripleClick.ordinal.toString(),
-        if (warmLink) "1" else "0",
-        warmWindowSeconds.toString(),
     ).joinToString(",")
 
     companion object {
         /**
          * The mapping [text] was saved as, or the default one when it is missing or does not read back.
          *
-         * A file written before the warm-link setting existed holds four numbers and still reads: the switch and the
-         * three destinations, with the link kept warm off and the default window, which is what those versions did.
-         *
-         * A window that is not one the page offers is kept as it was written rather than throwing the whole file
-         * away: twenty or thirty seconds is what this setting offered before the ring was measured dropping the link
-         * itself, and [RingWarmSettings.windowMillis] reads it as the longest window the ring honours (ten), so a
-         * user who chose the longest hold keeps the longest hold instead of losing the switch and the three
-         * destinations with it.
+         * A file with two more numbers than this reads as the switch and destinations it holds: those were the
+         * keep-the-ring-connected setting and its window, from the versions that had one, and reading the file as
+         * damaged would take the user's switch and three destinations with them. The next save writes the four
+         * numbers this version reads.
          */
         fun decode(text: String?): RingButtonMapping {
             val parts = text?.split(',')?.map { it.trim().toIntOrNull() } ?: return RingButtonMapping()
             if (parts.size !in setOf(4, 6) || parts.any { it == null }) return RingButtonMapping()
             val actions = RingButtonAction.entries
             if (parts.drop(1).take(3).any { it !in actions.indices }) return RingButtonMapping()
-            val warm = parts.getOrNull(4)
-            val window = parts.getOrNull(5)
-            if (warm != null && warm !in 0..1) return RingButtonMapping()
-            if (window != null && window <= 0) return RingButtonMapping()
             return RingButtonMapping(
                 enabled = parts[0] == 1,
                 click = actions[parts[1]!!],
                 doubleClick = actions[parts[2]!!],
                 tripleClick = actions[parts[3]!!],
-                warmLink = warm == 1,
-                warmWindowSeconds = window ?: RING_WARM_DEFAULT_SECONDS,
             )
         }
     }

@@ -3,7 +3,6 @@ package com.anopticlabs.gravel.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import coredevices.pebble.ui.TopBarParams
-import kotlin.math.abs
 import kotlinx.coroutines.flow.StateFlow
 import org.koin.compose.getKoin
 
@@ -30,18 +29,6 @@ interface RingButtonSettings {
 
     /** Sends [tap] to [action]; the recording gestures are not remappable and have no setter. */
     fun setAction(tap: RingButtonTap, action: RingButtonActionChoice)
-
-    /**
-     * Keeps the ring's link open after a press, for [RingButtonFacts.warmWindow] of quiet, so the next tap does not
-     * pay for a connect. Off unless the user asks: the ring's battery pays for the held link.
-     */
-    fun setWarmLink(warm: Boolean)
-
-    /**
-     * How long the link is held once nothing else happens: eight seconds or ten, eight by default. Ten is the
-     * longest the ring allows — it drops a held link itself after roughly ten seconds.
-     */
-    fun setWarmWindow(window: RingButtonWarmWindow)
 
     /** The page itself; the top bar and the layout are the app's own. */
     @Composable
@@ -70,34 +57,12 @@ enum class RingButtonActionChoice(val labelKey: String) {
     NOTHING("ring_button_action_nothing"),
 }
 
-/**
- * How long the ring's link is kept open after a press, when the user has asked for that: the two windows the page
- * offers, and nothing else. A window is paid for with the ring's battery, so the page does not offer a longer one —
- * and it could not: the ring drops a held link itself about ten seconds after a press, which is why the longest
- * window offered is ten seconds.
- */
-enum class RingButtonWarmWindow(val seconds: Int, val labelKey: String) {
-    EIGHT(8, "ring_button_warm_window_8"),
-    TEN(10, "ring_button_warm_window_10"),
-    ;
-
-    companion object {
-        /**
-         * The window nearest [seconds]: a value the page no longer offers — the twenty or thirty this setting wrote
-         * before the ring's own drop was measured — reads as the closest window it offers now, which for both is ten.
-         */
-        fun of(seconds: Int): RingButtonWarmWindow = entries.minBy { abs(it.seconds - seconds) }
-    }
-}
-
-/** Everything the page shows, in plain values: the switch, the three taps' destinations, and the warm link. */
+/** Everything the page shows, in plain values: the switch and the three taps' destinations. */
 data class RingButtonFacts(
     val enabled: Boolean = false,
     val click: RingButtonActionChoice = RingButtonActionChoice.PLAY_PAUSE,
     val doubleClick: RingButtonActionChoice = RingButtonActionChoice.NEXT,
     val tripleClick: RingButtonActionChoice = RingButtonActionChoice.PREVIOUS,
-    val warmLink: Boolean = false,
-    val warmWindow: RingButtonWarmWindow = RingButtonWarmWindow.EIGHT,
 ) {
     fun actionFor(tap: RingButtonTap): RingButtonActionChoice = when (tap) {
         RingButtonTap.CLICK -> click

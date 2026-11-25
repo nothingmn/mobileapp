@@ -16,10 +16,10 @@ import com.anopticlabs.gravel.notebook.pipeline.MAX_CAPTURE_MILLIS
 import com.anopticlabs.gravel.notebook.storage.DeviceStateFile
 import com.anopticlabs.gravel.notebook.storage.QueueStore
 import com.anopticlabs.gravel.ring.link.RING_ADVERTISED_SERVICE
-import com.anopticlabs.gravel.ring.link.RingLinkKeeper
-import com.anopticlabs.gravel.ring.link.openRingLink
+import com.anopticlabs.gravel.ring.link.withRingConnection
 import com.anopticlabs.gravel.ring.button.RingButtonController
 import com.anopticlabs.gravel.ring.button.RingMediaKeys
+import com.anopticlabs.gravel.ring.button.RingPressClock
 import com.anopticlabs.gravel.ring.button.RingPressTiming
 import com.anopticlabs.gravel.ring.protocol.RING_COMPANY_ID
 import com.anopticlabs.gravel.ring.protocol.RingAdvertisement
@@ -535,24 +535,9 @@ val ringClientModule = module {
     // Gravel: the ring's button. Bound here, not behind VOICE_MQTT_ENABLED: it needs no broker and no Notebook.
     single { RingButtonFile(androidContext().noBackupFilesDir) }
     single<RingMediaKeys> { AndroidRingMediaKeys(androidContext()) }
-    // One press timing for the process: the keeper stamps it when the press is heard and when its link is up, the
-    // session's button report stamps the record, and the controller writes the one line per gesture from it.
+    // One press timing for the process: the link stamps the advertisement's moment and its own as the link comes up,
+    // the session's button report stamps the record, and the controller writes the one line per gesture from it.
     single { RingPressTiming() }
-    // Gravel: the link the button keeps warm between presses, for the window Settings > Ring button chooses. Its
-    // scope is its own because a held link outlives the press that opened it.
-    single {
-        val context = androidContext()
-        val links = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        RingLinkKeeper(
-            scope = links,
-            settings = { get<AndroidRingButtonSettings>().warm },
-            open = { address ->
-                val adapter = checkNotNull(context.getSystemService(BluetoothManager::class.java)?.adapter) { "no Bluetooth" }
-                openRingLink(adapter.getRemoteDevice(address), links)
-            },
-            timing = get(),
-        )
-    }
     // One controller for the process: a gesture's collections are read by the session, one sync at a time, and a
     // burst must not be split across two of them.
     single {
@@ -567,7 +552,6 @@ val ringClientModule = module {
             file = get(),
             pairedRing = get<PairedRingFile>().address,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-            closeHeldLink = { getOrNull<RingLinkKeeper>()?.close("keep-the-ring-connected was turned off") },
         )
     } bind RingButtonSettings::class
     single {
@@ -591,10 +575,11 @@ val ringClientModule = module {
             paired = get<PairedRingFile>().address,
             hear = ::ringAdvertisements,
             sync = { address, advertisement, heardAtMillis ->
-                // The warm-link keeper owns the link: it reuses the one it is holding when this press arrived inside
-                // the window, and closes it when it is not needed. With the setting off it opens and closes per press,
-                // which is what this did before the setting existed.
-                get<RingLinkKeeper>().withLink(address, heardAtMillis) { connection ->
+                // One link per press, closed when the session returns: a press is heard only as an advertisement, and
+                // a ring with a link open does not advertise, so a link kept between presses makes the next tap
+                // invisible (DESIGN_NOTES, "Why the ring's link is not held between presses").
+                val adapter = checkNotNull(context.getSystemService(BluetoothManager::class.java)?.adapter) { "no Bluetooth" }
+                withRingConnection(adapter.getRemoteDevice(address), RingPressClock(get(), heardAtMillis)) { connection ->
                     RingSession(
                         connection,
                         positions(address),

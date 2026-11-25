@@ -41,8 +41,6 @@ fun RingButtonScreen(
     facts: RingButtonFacts,
     onEnabled: (Boolean) -> Unit,
     onAction: (RingButtonTap, RingButtonActionChoice) -> Unit,
-    onWarmLink: (Boolean) -> Unit,
-    onWindow: (RingButtonWarmWindow) -> Unit,
 ) {
     val title = RingButtonCopy(RingButtonKeys.TITLE).text()
     LaunchedEffect(title) {
@@ -73,55 +71,10 @@ fun RingButtonScreen(
             TapChoice(tap = tap, facts = facts, onAction = onAction)
         }
 
-        Text(RingButtonCopy(RingButtonKeys.SECTION_LINK).text(), style = MaterialTheme.typography.titleMedium)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(RingButtonCopy(RingButtonKeys.WARM_TITLE).text())
-                Text(
-                    RingButtonCopy(RingButtonKeys.WARM_SUBTITLE).text(),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Switch(checked = facts.warmLink, onCheckedChange = onWarmLink)
-        }
-        // The window is only worth naming while a link is held: with the switch off there is no window to choose.
-        if (facts.warmLink) WindowChoice(facts = facts, onWindow = onWindow)
-
         Text(RingButtonCopy(RingButtonKeys.SECTION_RECORDING).text(), style = MaterialTheme.typography.titleMedium)
         Text(RingButtonCopy(RingButtonKeys.RECORDING_NOTE).text(), style = MaterialTheme.typography.bodySmall)
 
         Text(RingButtonCopy(RingButtonKeys.SOURCE_NOTE).text(), style = MaterialTheme.typography.bodySmall)
-    }
-}
-
-/** How long the link stays up after a press, as one of the two windows the page offers. */
-@Composable
-private fun WindowChoice(
-    facts: RingButtonFacts,
-    onWindow: (RingButtonWarmWindow) -> Unit,
-) {
-    var open by remember { mutableStateOf(false) }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(RingButtonCopy(RingButtonKeys.WARM_WINDOW_TITLE).text(), modifier = Modifier.weight(1f))
-        Column {
-            TextButton(onClick = { open = true }) {
-                Text(
-                    RingButtonCopy(facts.warmWindow.labelKey).text(),
-                    modifier = Modifier.widthInOrLongestWord(150.dp),
-                )
-            }
-            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                for (window in RingButtonWarmWindow.entries) {
-                    DropdownMenuItem(
-                        text = { Text(RingButtonCopy(window.labelKey).text()) },
-                        onClick = {
-                            open = false
-                            onWindow(window)
-                        },
-                    )
-                }
-            }
-        }
     }
 }
 

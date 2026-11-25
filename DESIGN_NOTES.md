@@ -189,69 +189,77 @@ the sync rather than importing the ring again, until the user confirms
 Import again on the ring's Devices entry, which forgets the position so
 the next sync imports everything still on the ring, duplicates included.
 
-The Bluetooth link (`openRingLink` and `withRingConnection`, androidMain, both
-over `KableHeldLink`) uses Kable. It refuses a device that is not bonded before
-connecting, finds the three characteristics by UUID, subscribes the control
-channel and then the data channel before sending anything, and watches the
-connection state so a lost link ends the session at once with the status
-Android reported (`runRingLink`, `RingHeldConnection.ended`). It hangs up by
-subscribing to the system-input channel, which the description gives as the
-ring's disconnect signal, before the other subscriptions end. `withRingConnection`
-closes the link as the block returns; `openRingLink` hands it out already
-connected and subscribed, for the caller that means to keep it (below).
+The Bluetooth link (`withRingConnection`, androidMain, over `KableHeldLink`) uses
+Kable. It refuses a device that is not bonded before connecting, finds the three
+characteristics by UUID, subscribes the control channel and then the data
+channel before sending anything, and watches the connection state so a
+lost link ends the session at once with the status Android reported
+(`RingHeldConnection.ended`). It hangs up by subscribing to the system-input
+channel, which the description gives as the ring's disconnect signal, before the
+other subscriptions end. The link exists to serve one press and is closed before
+that press's session returns; nothing in the app may keep one alive past it, and
+why is below.
 
-#### A warm link between presses
+#### Why the ring's link is not held between presses
 
-A press is only visible once connected, so every tap used to cost a GATT
-connect and service discovery before the button record could be read. Settings
-> General > Ring button therefore offers **Keep the ring connected after a
-press**, off by default, with an **8 s or 10 s** window (8 s by default, the
-only two choices the page offers). With it on, a session's end does not close
-the link: `RingLinkKeeper` holds it and starts a timer for the chosen window of
-quiet, each press restarts that timer, and a press arriving inside the window
-reuses the held link instead of connecting — one drain of anything the ring
-sent while idle first, because a session's exchange refuses bytes that arrived
-between its requests. With it off the link closes as each session ends, exactly
-as before the setting existed.
+Every tap used to cost a GATT connect and service discovery before the button
+record could be read, because the runner closes the link when a sync ends. A
+**Keep the ring connected after a press** window was built to remove that cost —
+`RingLinkKeeper` held the link for eight or ten seconds of quiet, and the next
+press was meant to reuse it. It was removed: it lost presses, and the way it lost
+them is in the protocol and in what the ring does with a link.
 
-The window is ten seconds at most because the ring itself ends the link about
-ten seconds after a press: measured with the window on, the keeper logged "the
-ring dropped the held link (ring link failed: OTHER)" roughly ten seconds after
-each press. The page therefore cannot offer the twenty and thirty seconds it
-first shipped with — the second tap of a slow pair always paid for a fresh
-connect while the setting said it would not — and a stored twenty or thirty
-reads as the longest window there is, ten, rather than as no window at all.
+The app learns that a press happened from one thing only: the ring's
+advertisement, whose recording bit is set while its button is being used
+(`RingSyncRunner` reads `advertisement.recording`, which is the only way into a
+session that is not the six-hourly one). A press is a collection — record `0x53`
+inside a collection, as the media-remote section below describes — and a
+collection exists to this client only as the answer to a read. There is no
+unprompted button notification to subscribe to: the control and data channels
+carry the ring's answers, and a session's exchange treats anything arriving
+between its requests as a protocol fault (`RingSession.exchange`). So the held
+link's subscriptions cannot deliver a press of their own accord; the app has to
+be told, and the only thing that tells it is an advertisement.
 
-The decision is pure and host-tested: `RingWarmLink` (commonMain) takes the
-clock, the window, the last use and whether a link is held, and answers
-connect, reuse, close-then-connect, close, hold or nothing; `RingLinkKeeper`
-only carries the answer out. The keeper always closes: a session that throws,
-a link the ring dropped (its `ended` reports what Android said), the window
-running out, the setting being turned off, and the background service stopping
-(`PebbleService.onDestroy`) each close the link and log which it was. A connect
-that outlasts 30 s is given up and the press fails the way any other link
-failure does, so no coroutine or socket is left behind.
+Measured on the operator's phone (2026-11-25, window at 8 s): at 15:10:31 a tap
+was served — 1159 ms from the advertisement to a usable link, 243 ms from there
+to the button record, 151 ms from the record to the key — and the session's end
+held the link and logged "holding the link for 8000 ms of quiet". The operator
+tapped again immediately, and **no log line appeared for it**. The keeper closed
+the held link at 15:10:39 ("the ring was quiet for the whole 8000 ms window"),
+and the next press was not served until 15:11:05, 34 s later. The scan runs
+beside the sync for the whole time (`RingSyncRunner.search`), so the app was
+listening throughout: the ring does not advertise while a link is open, and did
+not for another 26 s after the link was closed. A held link therefore hides the
+next tap from the app entirely, for as long as it is held and then some.
 
-The cost is the ring's battery: a held link is a connection the ring keeps
-alive between presses, which is why the switch is off by default and the window
-is not offered longer than the ring allows. What the app cannot measure is the
-ring's own current draw, and what a host cannot prove is the GATT part — that
-Kable's connect and the ring's disconnect behave as the tests' fake does. Both
-need a phone and a ring: the operator's debug log carries one line per press on
-the `RingButton` tag with the milliseconds from the advertisement to the link
-being up, from there to the button record, and from the record to the key
-(`RingPressMarks.line`), which is what the setting is meant to move.
+What would serve a press over a held link is polling it — a read of the
+advertisement, then of any new collection, every fraction of a second while
+nothing is happening. Nothing here has shown the ring answers reads on a link it
+has been idle on, and it ends such a link by itself about ten seconds after a
+press, which is not the behaviour of something waiting to be asked. That needs a
+phone and a ring to prove before it is shipped; until it is, the setting promised
+a saving it could not make and cost a press to keep it. The page, both locales'
+strings, the saved fields and the keeper are gone with it, and a settings file
+that still holds the two extra numbers reads as the switch and the three
+destinations it holds.
 
-The open itself is timed the same way, in a second line on the same tag, because
-the first measurement put about 3.2 s between the advertisement and a usable
-link — far more than the 152 ms debounce, so the cost is in the open and had to
-be attributed. `RingConnectTiming` marks the GATT connection, service discovery,
-the control channel's subscription, the data channel's and the moment the link
-could carry the session's first request; `RingConnectMarks.line` prints the five
-gaps. The GATT mark is taken from the peripheral's state rather than after
-`connect()` returns, because `connect()` returns only once the services are
-there: stamped afterwards, discovery would be folded into the wait for the link
-and the two steps could not be told apart.
+The press is timed instead, and the timing is what a later attempt would be
+judged by. The open is marked as each step of it finishes: the GATT connection,
+service discovery, the control channel's subscription, the data channel's and the
+moment the link could carry the session's first request (`RingConnectTiming`,
+`RingConnectMarks.line`). The GATT mark is taken from the peripheral's state
+rather than after `connect()` returns, because `connect()` returns only once the
+services are there: stamped afterwards, discovery would be folded into the wait
+for the link and the two steps could not be told apart. One line per press is
+written at debug on the `RingButton` tag with those five gaps, and the controller
+writes a second with the advertisement, the record and the key
+(`RingPressMarks.line`). Every number in both comes from the device.
+
+That line is why the open was examined at all: the first measurement put about
+3.2 s between the advertisement and a usable link, far more than the 152 ms
+debounce the setting had been judged by, so the cost was in the open and had to
+be attributed.
 
 Whether the link is encrypted is up to Android and the ring.
 `btm_ble_connection_established` (android16-release,

@@ -45,25 +45,4 @@ class RingButtonFactsTest {
         assertTrue(ringButtonItemShown(paired = true))
         assertFalse(ringButtonItemShown(paired = false), "with no ring there is no button to configure")
     }
-
-    @Test
-    fun theLinkIsNotHeldUntilTheUserAsksAndTheWindowIsTheShorterOne() {
-        val facts = RingButtonFacts()
-
-        assertFalse(facts.warmLink, "a held link costs the ring's battery, so it is never on by default")
-        assertEquals(RingButtonWarmWindow.EIGHT, facts.warmWindow)
-        assertEquals(8, facts.warmWindow.seconds)
-        assertEquals(listOf(8, 10), RingButtonWarmWindow.entries.map { it.seconds }, "the two windows the page offers")
-    }
-
-    @Test
-    fun aStoredWindowThePageNoLongerOffersIsDrawnAsTheNearestOneItDoes() {
-        // Twenty and thirty are what the page offered before the ring was measured dropping the link itself, about
-        // ten seconds after a press. A phone that saved one shows the longest window there is, not a blank.
-        assertEquals(RingButtonWarmWindow.TEN, RingButtonWarmWindow.of(20))
-        assertEquals(RingButtonWarmWindow.TEN, RingButtonWarmWindow.of(30))
-        assertEquals(RingButtonWarmWindow.TEN, RingButtonWarmWindow.of(10), "a window the page offers is itself")
-        assertEquals(RingButtonWarmWindow.EIGHT, RingButtonWarmWindow.of(8), "a window the page offers is itself")
-        assertEquals(RingButtonWarmWindow.EIGHT, RingButtonWarmWindow.of(0), "nothing near the top of the range")
-    }
 }

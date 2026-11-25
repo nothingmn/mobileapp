@@ -8,8 +8,8 @@ package com.anopticlabs.gravel.ring.link
  * Why five marks rather than one. Measured on the operator's phone, the press spent about 3.2 s between hearing the
  * ring's advertisement and having a usable link, against 152 ms for the debounce — so the cost is in the open, and
  * "connected" as one number could not say which part of it. The marks are set by the Android link (see
- * `openRingLink`); this class only carries them, and [RingConnectMarks.line] is the one place they become words, so
- * the shape of the line is proved on a host rather than on a phone.
+ * `withRingConnection`); this class only carries them, and [RingConnectMarks.line] is the one place they become
+ * words, so the shape of the line is proved on a host rather than on a phone.
  *
  * [clock] is the app's button clock (`System.currentTimeMillis`, the one the advertisement's own time is read on),
  * so the first gap can be taken from the advertisement the runner heard. One open is marked on the coroutine that

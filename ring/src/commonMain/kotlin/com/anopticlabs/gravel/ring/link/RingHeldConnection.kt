@@ -4,14 +4,15 @@ import com.anopticlabs.gravel.ring.sync.RingConnection
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * A link to the ring that stays connected until [close], so a press that arrives while it is held can use it
- * instead of connecting again. The per-press path (`withRingConnection`) and the warm path (`RingLinkKeeper`) share
- * one implementation: the difference is only who decides to close it, and when.
+ * A link to the ring that stays up until [close] — one press's link, so the block that opened it is the only thing
+ * that can still be using it. `withRingConnection` opens one, hands it to the session and closes it before it
+ * returns; nothing else in the app may keep one alive past the press that opened it, because a ring with a link
+ * open does not advertise, and an advertisement is the only way a press is heard (see DESIGN_NOTES, "Why the ring's
+ * link is not held between presses").
  *
- * [ended] is the ring's own answer, not the keeper's: it becomes non-null when the link went down without anybody
+ * [ended] is the ring's own answer, not the caller's: it becomes non-null when the link went down without anybody
  * asking, and the words in it say what Android reported. A link that was closed deliberately does not report
- * anything here. The keeper watches it so a dropped link is noticed and released while nothing is using it, rather
- * than being found dead by the next press.
+ * anything here. It is what ends a session at once, rather than at the next request's timeout.
  */
 interface RingHeldConnection : RingConnection {
     /**
@@ -19,15 +20,6 @@ interface RingHeldConnection : RingConnection {
      * exception a session waiting on [notifications] is given.
      */
     val ended: StateFlow<RingLinkException?>
-
-    /**
-     * Empties what the ring sent while no session was reading — the count is logged, not acted on.
-     *
-     * A session's exchange refuses bytes that arrived between its requests (a real protocol fault, which must
-     * still fail loudly), so a link that has been idle since the last press is drained before it is handed over.
-     * On a link that has just been subscribed this is always empty.
-     */
-    fun drain(): Int
 
     /**
      * When each step of this link's open happened, for the one line a press logs about it (see

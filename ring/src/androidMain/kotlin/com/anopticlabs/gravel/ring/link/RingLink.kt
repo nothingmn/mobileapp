@@ -2,6 +2,7 @@ package com.anopticlabs.gravel.ring.link
 
 import android.bluetooth.BluetoothDevice
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.ring.button.RingPressClock
 import com.anopticlabs.gravel.ring.protocol.RingProtocolException
 import com.anopticlabs.gravel.ring.sync.RingConnection
 import com.anopticlabs.gravel.ring.sync.RingLinkFailure
@@ -48,19 +49,37 @@ private const val NOTIFICATION_BUFFER = 256
 
 private val log = Logger.withTag("RingLink")
 
+/** The tag a press's own lines are written on: the button's, beside the press timings and the settled gesture. */
+private val presses = Logger.withTag("RingButton")
+
 /**
- * Connects to the bonded ring [device], runs [block] over the connection (see [runRingLink]), then disconnects
- * and closes the link. A device that is not bonded is refused before connecting, as needing pairing again.
+ * Connects to the bonded ring [device], runs [block] over the connection (see [runRingLink]), then disconnects and
+ * closes the link. A device that is not bonded is refused before connecting, as needing pairing again.
+ *
+ * The link lives exactly as long as the press that opened it: a press is heard only as an advertisement, a ring with
+ * a link open does not advertise, and so a link held between presses makes the next tap invisible (DESIGN_NOTES,
+ * "Why the ring's link is not held between presses"). [press] is that press's clock, marked as the link comes up,
+ * and the line saying what each step of the open cost is written on the button's own tag.
  */
-suspend fun <T> withRingConnection(device: BluetoothDevice, block: suspend (RingConnection) -> T): T = coroutineScope {
-    val link = openRingLink(device, this)
+suspend fun <T> withRingConnection(
+    device: BluetoothDevice,
+    press: RingPressClock? = null,
+    block: suspend (RingConnection) -> T,
+): T = coroutineScope {
+    // Before the open, so the first gap is measured from the advertisement rather than from connecting.
+    press?.timing?.pressHeard(press.heardAtMillis)
+    val connects = RingConnectTiming()
+    val link = openRingLink(device, this, connects = connects)
+    if (press != null) {
+        press.timing.linkConnected()
+        if (!link.connect.isEmpty) presses.d { link.connect.line(press.heardAtMillis) }
+    }
     overLink(link) { block(it) }
 }
 
 /**
- * Connects to the bonded ring [device] and leaves the link up until [close] — the warm path, for
- * [RingLinkKeeper]. [scope] owns the subscriptions and the watch on the link, so it must outlive the press that
- * opened it; the keeper's own scope is the one that does.
+ * Connects to the bonded ring [device] and leaves the link up until [close]. [scope] owns the subscriptions and the
+ * watch on the link, so it must outlive the link; [withRingConnection] gives it the press's own coroutine.
  *
  * The returned link is usable when this returns: connected, service discovery done, both channels subscribed. That
  * is also what the press timings call "connected" — the moment a session could send its first request.
@@ -68,7 +87,7 @@ suspend fun <T> withRingConnection(device: BluetoothDevice, block: suspend (Ring
  * [connects] is marked as each of those steps finishes, so a press can say which of them the wait was spent in
  * ([RingConnectMarks.line]).
  */
-suspend fun openRingLink(
+private suspend fun openRingLink(
     device: BluetoothDevice,
     scope: CoroutineScope,
     subscribeTimeout: Duration = 10.seconds,
@@ -185,8 +204,8 @@ internal suspend fun attach(
 
 /**
  * One connection to the ring, kept open until [close]. Its subscriptions and its watch live on [scope]; a link that
- * goes down without being asked reports itself through [ended], which is what tells [RingLinkKeeper] that the warm
- * window is over.
+ * goes down without being asked reports itself through [ended], which is what ends a session at once instead of at
+ * the next request's timeout.
  */
 private class KableHeldLink(
     private val peripheral: Peripheral,
@@ -245,12 +264,6 @@ private class KableHeldLink(
 
     override suspend fun writeData(bytes: ByteArray) =
         linkStep(peripheral) { peripheral.write(data, bytes, WriteType.WithoutResponse) }
-
-    override fun drain(): Int {
-        var dropped = 0
-        while (notifications.tryReceive().isSuccess) dropped++
-        return dropped
-    }
 
     /** The exception the link went down with, once it has; for the watch that ends a session or a subscription. */
     suspend fun lossWhenEnded(): RingLinkException = checkNotNull(ended.first { it != null })

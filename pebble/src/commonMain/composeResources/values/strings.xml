@@ -59,10 +59,4 @@
     <string name="ring_button_section_recording">Recording</string>
     <string name="ring_button_recording_note">Hold the button to record a note, or touch it and then hold to start recording. Both stay as recording and are not changed here.</string>
     <string name="ring_button_source_note">The gesture is read from the ring's own report of its button, which the app collects when it syncs with the ring, so a tap is seen without anything being recorded. The key follows about 0.15 seconds after the last tap: that wait is what tells one tap from two.</string>
-    <string name="ring_button_section_link">Faster taps</string>
-    <string name="ring_button_warm_title">Keep the ring connected after a press</string>
-    <string name="ring_button_warm_subtitle">The next tap is quicker because the ring stays linked for the window below. The window cannot be longer than the ring allows: the ring drops the link by itself about ten seconds after a press, so a longer window would promise a link that is not there. The ring's battery pays for the held link.</string>
-    <string name="ring_button_warm_window_title">Stay connected for</string>
-    <string name="ring_button_warm_window_8">8 seconds</string>
-    <string name="ring_button_warm_window_10">10 seconds</string>
 </resources>
