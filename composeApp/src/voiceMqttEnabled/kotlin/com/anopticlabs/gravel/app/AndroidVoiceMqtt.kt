@@ -67,8 +67,10 @@ val voiceMqttModule: Module = module {
         // off nothing is bound and the answer is "reminders are allowed" — today's behaviour.
         single<AppReminderGate> { AndroidAppReminderGate(get<VoiceMqttEngine>().controller) }
         // The capture chime's routing: this module is where the voice settings and the connected audio outputs are
-        // both reachable, so the chime's permission to be heard is decided here rather than in :notebook.
-        single<ChimeRouting> { VoiceRoutedChime(get()) }
+        // both reachable, so the chime's permission to be heard is decided here rather than in :notebook. The
+        // settings are the engine's; the outputs are the platform's own device list, read at the moment of the
+        // chime, because a capture can arrive while the loop is idle.
+        single<ChimeRouting> { VoiceRoutedChime(get(), androidContext()) }
         single<VoiceMqttSettings> { AndroidVoiceMqttSettings(get()) }
         single<TextToSpeechSettings> { AndroidTextToSpeechSettings(get()) }
     }

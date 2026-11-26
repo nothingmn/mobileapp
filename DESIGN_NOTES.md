@@ -488,21 +488,36 @@ A tap whose audio is under `MIN_RECORDING_MILLIS`, and a recording left on the
 ring because the Notebook is off, is full or lost, are refused above the chime
 and stay silent.
 
-The sound is the app's own: `scripts/make-capture-chime.py` generates a 200 ms
-44.1 kHz mono sample — an 880 Hz sine with its fifth at 1320 Hz, a
-4 ms raised-cosine attack, an exponential decay (τ 55 ms) and an 8 ms release
-to silence, peaked at 0.25 full scale (−12 dBFS) so it sits under speech and
-music. The script is committed beside the resource and is the only source of
-the file; built-in notification sounds were not used because they differ per
-handset and some are harsh.
+The sound is the operator's own, not the app's: he supplied a short recording and asked for
+it to be used, so the tone the app used to generate is gone. It is two identical notes, each
+about a tenth of a second and roughly 145 ms apart, carried on two high partials at about
+3.17 kHz and 3.80 kHz (the upper close to six fifths of the lower). The two-note shape is his
+choice and was kept exactly as it arrived: neither note was shortened, the gap between them
+was not closed, and no silence was trimmed from either end. Only the format and the level
+changed. The source was a stereo MP3; the app ships mono 44.1 kHz 16-bit PCM at
+`notebook/src/androidMain/res/raw/capture_chime.wav`, peak-normalised from −10.1 dBFS to
+−12 dBFS (−11.99 dBFS measured, RMS −24.5 dBFS) so it sits under speech and music as the
+rule above requires. Its first sample is at −60 dBFS and its last 18 ms are exact digital
+zeros, so neither end can click. `scripts/remake-capture-chime.sh` is the committed recipe
+that turns a supplied MP3 into that resource, with the ffprobe measurement and the two ffmpeg
+passes written out; the source recording is the operator's own and is not committed, so the
+resource beside this note and that recipe are what the tree holds. Built-in notification
+sounds were not used because they differ per handset and some are harsh.
 
 Where it may be heard is the voice loop's own routing rule, not a second one:
 `:notebook` declares a `ChimeRouting` port (a reason the chime is held back, or
-nothing when it is allowed), and the app implements it where the voice settings
-and the connected audio outputs are both visible — with the loop compiled in,
-by asking `PlaybackPolicy.decide` with exactly the settings a reply would read;
-with it compiled out, by asking the platform for a live Bluetooth output, empty
-meaning silence. So headset only on means a Bluetooth output connected *now*,
+nothing when it is allowed), and the app implements it — with the loop compiled
+in, by asking `PlaybackPolicy.decide` with exactly the settings a reply would
+read; with it compiled out, by taking the conservative half of that rule. The
+switches are the user's, so they are the voice module's; the connected outputs
+are not, in either build. They are read from the platform's own device list at
+the moment of the chime (`AudioManager.getDevices(GET_DEVICES_OUTPUTS)` filtered
+to A2DP, SCO and BLE headsets), because a ring capture arrives on the ring path
+and can be taken while the voice loop is idle, not yet started, or not
+connected — and a gate asked in that state answers with no outputs, which reads
+as "no Bluetooth headset" and silences a chime the operator never held back. An
+earlier build asked the loop's own gate and was silent for exactly that reason.
+So headset only on means a Bluetooth output connected *now*,
 narrowed to the pinned device when one is set; a paired-but-off headset is not
 an output; and the phone's speaker never takes its place. Headset only off
 allows whatever output is active, the speaker included. The speaker is not a
@@ -517,10 +532,15 @@ The decision is asked at every capture, twice: `AndroidCaptureChime` reads the
 ringer mode and the interruption filter, staying silent in silent/vibrate mode
 and under Do Not Disturb rather than overriding either, and `ChimeRouting`
 answers the routing question. Both must permit the chime; the phone's state is
-asked first so a merely silenced phone is logged as that. A held chime writes
-one debug line naming the reason — silenced, Do Not Disturb, replies off, no
-Bluetooth output, or the pinned device not connected — in the shape the reply
-path writes, and the recording goes through regardless.
+asked first so a merely silenced phone is logged as that. A held chime writes one
+INFO line naming the reason — replies off, no Bluetooth output, the pinned device
+not connected, silenced, or Do Not Disturb — in the shape the reply path writes;
+the player writes one INFO line when the sample was actually handed to the
+platform, and one saying so when the sample had not finished loading and the
+chime waits for it. All of them carry the `CaptureChime` tag at INFO, so a single
+`adb logcat -d` on the phone answers why a capture was silent with no other
+instrumentation, and nothing is written when no capture was taken. The recording
+goes through regardless.
 
 `AndroidCaptureChime` plays the sample with media usage on a `SoundPool` and
 asks for no audio focus, so it overlays whatever is playing instead of stopping

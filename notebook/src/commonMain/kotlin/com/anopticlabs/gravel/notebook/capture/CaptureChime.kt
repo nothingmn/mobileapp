@@ -9,7 +9,8 @@ fun interface ChimePlayer {
 
 /**
  * Why the chime was not played. Each is a fact to record, never an error to show: the capture itself went through.
- * [logLine] is the debug line written at that moment, in the same shape the reply path writes.
+ * [logLine] is the line written at that moment, at INFO so a single `adb logcat -d` names the reason without any
+ * other instrumentation — the same shape the reply path writes.
  */
 enum class ChimeHeldReason(val logLine: String) {
     /** Spoken replies are switched off, and the acknowledgement obeys the same switch. */
@@ -49,7 +50,7 @@ class CaptureChime(
     private val player: ChimePlayer,
     private val routing: ChimeRouting = ANY_OUTPUT,
     private val silence: () -> ChimeHeldReason? = { null },
-    private val log: (String) -> Unit = { logger.d { it } },
+    private val log: (String) -> Unit = { logger.i { it } },
 ) {
     /** Announce the capture that has just been accepted for transcription. Call once per capture. */
     fun captureTaken() {

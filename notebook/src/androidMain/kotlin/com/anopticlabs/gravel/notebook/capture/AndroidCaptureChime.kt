@@ -54,9 +54,12 @@ class AndroidCaptureChime(context: Context, private val scope: CoroutineScope) :
     /** Loads the sample; call once from wherever the object graph is built, never from a capture's own path. */
     fun load() {
         pool.setOnLoadCompleteListener { _, id, status ->
-            if (status != 0) return@setOnLoadCompleteListener
+            if (status != 0) {
+                logger.w { "the capture chime did not load (status $status)" }
+                return@setOnLoadCompleteListener
+            }
             sample.set(id)
-            if (wanted.getAndSet(false)) pool.play(id, 1f, 1f, 0, 0, 1f)
+            if (wanted.getAndSet(false)) start(id)
         }
         scope.launch(Dispatchers.IO) {
             try {
@@ -71,9 +74,23 @@ class AndroidCaptureChime(context: Context, private val scope: CoroutineScope) :
         val id = sample.get()
         if (id == NOT_LOADED) {
             wanted.set(true)
+            logger.i { "chime waiting: the sample is not loaded yet, it plays as soon as it is" }
             return
         }
-        pool.play(id, 1f, 1f, 0, 0, 1f)
+        start(id)
+    }
+
+    /**
+     * Hands the sample to the platform and records which of the two things happened. Both are read at INFO on the
+     * same tag the held reasons use, so one `adb logcat -d` answers "did it play, and if not why" for a capture the
+     * operator made on the phone.
+     */
+    private fun start(id: Int) {
+        if (pool.play(id, 1f, 1f, 0, 0, 1f) == 0) {
+            logger.w { "chime not played: the player refused the sample" }
+        } else {
+            logger.i { "chime played" }
+        }
     }
 
     private companion object {
