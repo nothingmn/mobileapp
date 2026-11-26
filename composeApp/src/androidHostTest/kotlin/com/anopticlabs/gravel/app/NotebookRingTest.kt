@@ -1,5 +1,8 @@
 package com.anopticlabs.gravel.app
 
+import com.anopticlabs.gravel.notebook.capture.CaptureChime
+import com.anopticlabs.gravel.notebook.capture.ChimeHeldReason
+import com.anopticlabs.gravel.notebook.capture.ChimePlayer
 import com.anopticlabs.gravel.notebook.capture.wavDurationMillis
 import com.anopticlabs.gravel.notebook.pipeline.IngestResult
 import java.io.File
@@ -26,6 +29,7 @@ class NotebookRingSinkTest {
     private val now = 1_790_000_000_500L
     private val hours = TestTimeSource()
     private val ingested = mutableListOf<Pair<ByteArray, Long>>()
+    private var chimes = 0
 
     private val sink = NotebookRingSink(
         notebookOn = { on },
@@ -33,11 +37,28 @@ class NotebookRingSinkTest {
         ingest = { wav, at -> ingested += wav to at; result },
         clock = { now },
         marks = hours,
+        chime = CaptureChime(ChimePlayer { chimes++ }),
     )
 
     private fun seconds(rate: Int, seconds: Double) = ShortArray((rate * seconds).toInt()) { (it % 200 - 100).toShort() }
 
     private suspend fun store(samples: ShortArray, rate: Int = 16_000, at: Long? = 1_780_000_000) = sink.store(at, rate, samples, 7)
+
+    /** A second sink whose chime is never permitted, to prove a held chime is not a held recording. */
+    private var heldChimes = 0
+    private val heldLines = mutableListOf<String>()
+    private val heldSink = NotebookRingSink(
+        notebookOn = { on },
+        ringRecordingsQueued = { queued },
+        ingest = { wav, at -> ingested += wav to at; result },
+        clock = { now },
+        marks = hours,
+        chime = CaptureChime(
+            player = ChimePlayer { heldChimes++ },
+            routing = { ChimeHeldReason.NO_BLUETOOTH_OUTPUT },
+            log = { heldLines += it },
+        ),
+    )
 
     @Test
     fun aRecordingIsStoredAsASixteenKilohertzWavDatedByTheRing() = runTest {
@@ -188,6 +209,55 @@ class NotebookRingSinkTest {
         store(seconds(16_000, 2.0))
 
         assertEquals(2, sink.imported)
+    }
+
+    @Test
+    fun aRecordingTheNotebookTakesChimesOnceOnTheWayToTranscription() = runTest {
+        store(seconds(16_000, 2.0))
+
+        assertEquals(1, chimes)
+        assertEquals(1, ingested.size, "the chime sits on the accept path, not instead of it")
+    }
+
+    @Test
+    fun aCaptureTheRingDeliversInSeveralCollectionsChimesOnce() = runTest {
+        // RingSession joins a hold's parts and hands the sink one RingRecording however many collections carried
+        // it — `aHoldWhosePartsCarryButtonReportsIsOneRecordingHandedOver` in :ring, which asserts one stored
+        // recording from three collections. One hand-over here, one chime; nothing on this path counts collections.
+        store(seconds(16_000, 2.0))
+
+        assertEquals(1, chimes)
+    }
+
+    @Test
+    fun aTapUnderTheFloorChimesNothing() = runTest {
+        store(seconds(16_000, 0.999))
+
+        assertEquals(0, chimes, "a tap is refused before it reaches the Notebook, so it is refused before the chime")
+        assertTrue(ingested.isEmpty())
+    }
+
+    @Test
+    fun aRecordingLeftOnTheRingChimesNothing() = runTest {
+        on = false
+        store(seconds(16_000, 2.0))
+        on = true
+        queued = MAX_RING_RECORDINGS_QUEUED
+        store(seconds(16_000, 2.0))
+        queued = 0
+        result = IngestResult.LOST
+        store(seconds(16_000, 2.0))
+
+        assertEquals(0, chimes, "a recording the Notebook did not take is not announced")
+    }
+
+    @Test
+    fun aChimeTheRoutingHoldsBackIsLoggedAndTheRecordingStillGoesThrough() = runTest {
+        assertTrue(heldSink.store(1_780_000_000, 16_000, seconds(16_000, 2.0), 7))
+
+        assertEquals(0, heldChimes)
+        assertEquals(listOf("chime not played: no Bluetooth audio output is connected"), heldLines)
+        assertEquals(1, ingested.size, "the capture is taken whether or not it could be announced")
     }
 }
 

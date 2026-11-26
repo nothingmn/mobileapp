@@ -6,6 +6,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import com.anopticlabs.gravel.notebook.AppVisibility
+import com.anopticlabs.gravel.notebook.capture.ChimeRouting
 import com.anopticlabs.gravel.notebook.pipeline.AppReminderGate
 import com.anopticlabs.gravel.notebook.pipeline.NoteReplySink
 import com.anopticlabs.gravel.notebook.pipeline.NoteStoreReplyNotes
@@ -65,6 +66,9 @@ val voiceMqttModule: Module = module {
         // "Disable app reminders": the Notebook asks this at the moment a capture is published, so with the flag
         // off nothing is bound and the answer is "reminders are allowed" — today's behaviour.
         single<AppReminderGate> { AndroidAppReminderGate(get<VoiceMqttEngine>().controller) }
+        // The capture chime's routing: this module is where the voice settings and the connected audio outputs are
+        // both reachable, so the chime's permission to be heard is decided here rather than in :notebook.
+        single<ChimeRouting> { VoiceRoutedChime(get()) }
         single<VoiceMqttSettings> { AndroidVoiceMqttSettings(get()) }
         single<TextToSpeechSettings> { AndroidTextToSpeechSettings(get()) }
     }

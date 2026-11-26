@@ -469,6 +469,67 @@ did before the media remote existed; excluding the collection here instead
 cost a whole hold-to-record its last part and cleared the parts already read,
 so a recording never reached the Notebook at all.
 
+### The capture chime
+
+One soft chime sounds when a recording from the ring reaches the app and is
+about to be turned into text, and at no other moment: not for a typed note, not
+for the Notebook's own dictation, not for a recording made on the watch. There
+is no switch of its own; the maintainer's rule is that it follows the same
+restrictions as the assistant's output, so the two switches on Settings > Voice
+Assistant govern it as they govern a spoken reply. Switching spoken replies off
+therefore silences the capture acknowledgement as well, and headset only keeps
+it off the phone's speaker. That is intended, not an oversight.
+
+It sits on the ring sink's accept path, after the Notebook has taken the
+recording and before the drain transcribes it, and it is therefore once per
+capture: `RingSession` assembles the ring's several collections into one
+`RingRecording` before the sink is called, so the seam never sees a collection.
+A tap whose audio is under `MIN_RECORDING_MILLIS`, and a recording left on the
+ring because the Notebook is off, is full or lost, are refused above the chime
+and stay silent.
+
+The sound is the app's own: `scripts/make-capture-chime.py` generates a 200 ms
+44.1 kHz mono sample — an 880 Hz sine with its fifth at 1320 Hz, a
+4 ms raised-cosine attack, an exponential decay (τ 55 ms) and an 8 ms release
+to silence, peaked at 0.25 full scale (−12 dBFS) so it sits under speech and
+music. The script is committed beside the resource and is the only source of
+the file; built-in notification sounds were not used because they differ per
+handset and some are harsh.
+
+Where it may be heard is the voice loop's own routing rule, not a second one:
+`:notebook` declares a `ChimeRouting` port (a reason the chime is held back, or
+nothing when it is allowed), and the app implements it where the voice settings
+and the connected audio outputs are both visible — with the loop compiled in,
+by asking `PlaybackPolicy.decide` with exactly the settings a reply would read;
+with it compiled out, by asking the platform for a live Bluetooth output, empty
+meaning silence. So headset only on means a Bluetooth output connected *now*,
+narrowed to the pinned device when one is set; a paired-but-off headset is not
+an output; and the phone's speaker never takes its place. Headset only off
+allows whatever output is active, the speaker included. The speaker is not a
+fallback because the operator's rule is that an announcement he did not ask for
+must not come out of the phone in his hand — the same rule that keeps a reply
+off it. With the voice module compiled out there is no settings object to
+consult, so that build takes the conservative half of the rule: a Bluetooth
+output must be present and the speaker is never used, because unconfigured must
+not mean loud.
+
+The decision is asked at every capture, twice: `AndroidCaptureChime` reads the
+ringer mode and the interruption filter, staying silent in silent/vibrate mode
+and under Do Not Disturb rather than overriding either, and `ChimeRouting`
+answers the routing question. Both must permit the chime; the phone's state is
+asked first so a merely silenced phone is logged as that. A held chime writes
+one debug line naming the reason — silenced, Do Not Disturb, replies off, no
+Bluetooth output, or the pinned device not connected — in the shape the reply
+path writes, and the recording goes through regardless.
+
+`AndroidCaptureChime` plays the sample with media usage on a `SoundPool` and
+asks for no audio focus, so it overlays whatever is playing instead of stopping
+or ducking it; the stream follows the active media route, which the routing
+rule has already restricted. It posts nothing, wakes no screen and does not
+vibrate. The sample is loaded once on the chime's own coroutine when the graph
+is built and played fire-and-forget, so no capture, sync or button path waits on
+it.
+
 ## Firebase
 
 The Firebase SDKs are gone via the same idea at a different seam: the

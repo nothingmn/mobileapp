@@ -10,6 +10,8 @@ import android.os.Build
 import android.os.SystemClock
 import android.text.format.DateUtils
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.notebook.capture.AndroidCaptureChime
+import com.anopticlabs.gravel.notebook.capture.CaptureChime
 import com.anopticlabs.gravel.notebook.capture.QueuedCapture
 import com.anopticlabs.gravel.notebook.pipeline.CaptureIngest
 import com.anopticlabs.gravel.notebook.pipeline.MAX_CAPTURE_MILLIS
@@ -554,6 +556,15 @@ val ringClientModule = module {
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
         )
     } bind RingButtonSettings::class
+    // Gravel: the app's one chime, played when a ring capture has been received and taken for transcription. The
+    // sample is loaded once here, on the chime's own scope, and the sync never waits on it: a capture that arrives
+    // before it is ready is played as soon as it is. Where it may be heard is the voice output policy's answer,
+    // bound as ChimeRouting by whichever voice module this build compiles.
+    single {
+        val chime = AndroidCaptureChime(androidContext(), CoroutineScope(SupervisorJob() + Dispatchers.Default))
+        chime.load()
+        CaptureChime(player = chime, routing = get(), silence = chime::silence)
+    }
     single {
         NotebookRingSink(
             notebookOn = {
@@ -565,6 +576,7 @@ val ringClientModule = module {
                 withContext(Dispatchers.IO) { queue.readQueue().count(QueuedCapture::fromRing) } + queue.retainedRingCount()
             },
             ingest = { wav, at -> get<CaptureIngest>().ingest(wav, "wav", capturedAtMillis = at, fromRing = true) },
+            chime = get(),
         )
     }
     single {

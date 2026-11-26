@@ -34,11 +34,11 @@
     <string name="voice_hint_egress_topic">Un joker est attendu ici : la dernière partie du sujet de réponse appartient au serveur.</string>
     <string name="voice_section_speaking">Lecture</string>
     <string name="voice_toggle_speak_replies_title">Lire les réponses à voix haute</string>
-    <string name="voice_toggle_speak_replies_description">Désactivé, rien n\'est lu à voix haute. La réponse arrive quand même et reste jointe à la note.</string>
+    <string name="voice_toggle_speak_replies_description">Désactivé, rien n\'est lu à voix haute, le carillon de l\'enregistrement compris. La réponse arrive quand même et reste jointe à la note.</string>
     <string name="voice_toggle_speak_unsolicited_title">Lire tout ce qui arrive sur le sujet des réponses</string>
     <string name="voice_toggle_speak_unsolicited_description">Activé, tout ce qui arrive sur le filtre des réponses est lu à voix haute, rappels compris. Le broker ne sépare pas les clients : le message d\'un autre client peut être lu.</string>
     <string name="voice_toggle_headset_only_title">Lire uniquement dans un casque Bluetooth</string>
-    <string name="voice_toggle_headset_only_description">Activé, un casque doit être connecté au moment où la réponse arrive. Désactivé, la lecture passe par la sortie que le téléphone utilise, son propre haut-parleur compris.</string>
+    <string name="voice_toggle_headset_only_description">Activé, un casque doit être connecté au moment où la réponse arrive, et pour le carillon de l\'enregistrement. Désactivé, la lecture passe par la sortie que le téléphone utilise, son propre haut-parleur compris.</string>
     <string name="voice_picker_device_line">Lecture des réponses sur : %1$s</string>
     <string name="voice_picker_any_device">N\'importe quel appareil Bluetooth</string>
     <string name="voice_hint_device_headset_only">Utilisé seulement quand la lecture est limitée au Bluetooth.</string>

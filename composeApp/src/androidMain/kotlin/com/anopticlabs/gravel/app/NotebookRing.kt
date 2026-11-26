@@ -1,6 +1,8 @@
 package com.anopticlabs.gravel.app
 
 import co.touchlab.kermit.Logger
+import com.anopticlabs.gravel.notebook.capture.CaptureChime
+import com.anopticlabs.gravel.notebook.capture.ChimePlayer
 import com.anopticlabs.gravel.notebook.capture.MIN_RECORDING_MILLIS
 import com.anopticlabs.gravel.notebook.capture.RecordingBuffer
 import com.anopticlabs.gravel.notebook.pipeline.CAPTURE_SAMPLE_RATE
@@ -38,6 +40,12 @@ private const val RING_TIME_FLOOR_MILLIS = 1_735_689_600_000L
  * either limit, or when the Notebook could not keep a recording, it answers false, so the recordings stay on
  * the ring for a later sync, with the reason in [lastWait]. The hourly count spans syncs only when one instance serves
  * every sync in the process.
+ *
+ * [chime] is the app's one chime, and it belongs here because a [RingRecording] is already one assembled capture:
+ * the ring's several collections were joined before the session handed it over, so the accept path below runs once
+ * per capture however many parts carried it. It is asked after the Notebook has taken the recording and before the
+ * drain turns it into text, and it never throws or waits, so no sync pays for it. A tap under the floor and a
+ * recording left on the ring are refused above it and stay silent. Defaults to no sound.
  */
 class NotebookRingSink(
     private val notebookOn: suspend () -> Boolean,
@@ -45,6 +53,7 @@ class NotebookRingSink(
     private val ingest: suspend (wav: ByteArray, capturedAtMillis: Long) -> IngestResult,
     private val clock: () -> Long = System::currentTimeMillis,
     private val marks: TimeSource.WithComparableMarks = TimeSource.Monotonic,
+    private val chime: CaptureChime = CaptureChime(ChimePlayer {}),
 ) : RingRecordingSink {
     private val storedInLastHour = ArrayDeque<ComparableTimeMark>()
     private val importedCount = AtomicInteger()
@@ -74,6 +83,8 @@ class NotebookRingSink(
         val result = ingest(wav, capturedAt)
         logger.i { "recording at collection $firstIndex, $millis ms: $result" }
         if (result == IngestResult.LOST) return leftOnRing(firstIndex, RingWait.NOT_KEPT)
+        // The Notebook has the recording and the drain will turn it into text: this is the moment to say so, once.
+        chime.captureTaken()
         synchronized(storedInLastHour) { storedInLastHour.addLast(marks.markNow()) }
         importedCount.incrementAndGet()
         lastWait = null
